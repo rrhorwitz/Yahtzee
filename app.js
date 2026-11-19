@@ -234,7 +234,7 @@
     const n = players.length;
     const turn = game.turn;
     const me = cur();
-    const diceLive = settings.dice && !game.finished && turn.rolls > 0;
+    const diceLive = settings.dice && !game.finished && turn.rolls > 0 && !justScored;
     const allowed = diceLive ? S.allowedCategories(turn.dice, me.scores) : null;
     const hintCat = diceLive && settings.hint ? suggestBox(allowed, turn.dice, me.scores) : null;
     const totals = players.map((p) => S.totals(p));
@@ -289,8 +289,8 @@
       const paceHtml = pace.filled && !pace.missed
         ? `<span class="pace ${pace.diff >= 0 ? 'up' : 'down'}">${pace.diff > 0 ? '+' : pace.diff < 0 ? '−' : '±'}${Math.abs(pace.diff)}</span>` : '';
       const aria = pace.missed ? 'bonus out of reach' : pace.filled ? `${Math.abs(pace.diff)} ${pace.diff >= 0 ? 'ahead of' : 'behind'} bonus pace` : 'no upper scores yet';
-      return `<div class="c val sum pacecell${curCls(i)}${pace.missed ? ' missed' : ''}"${colStyle(i)} aria-label="${esc(p.name)}, upper ${t.upperSum} of 63, ${aria}">
-        <span class="frac">${t.upperSum}<small>/63</small></span>${paceHtml}</div>`;
+      return `<button class="c val sum pacecell${curCls(i)}${pace.missed ? ' missed' : ''}"${colStyle(i)} data-action="pace" data-p="${i}" aria-label="${esc(p.name)}, upper ${t.upperSum} of 63, ${aria}. Tap for details">
+        <span class="frac">${t.upperSum}<small>/63</small></span>${paceHtml}</button>`;
     }).join('');
 
     S.LOWER.forEach((c, k) => { h += catRow(c, k === 0 ? ' sec' : ''); });
@@ -415,7 +415,7 @@
     largeStraight: { dice: [2, 3, 4, 5, 6], on: [1, 1, 1, 1, 1], rule: 'Five numbers in a row.', eq: '40', fixed: 40 },
     yahtzee: { dice: [6, 6, 6, 6, 6], on: [1, 1, 1, 1, 1], rule: 'All five dice the same.', eq: '50', fixed: 50 },
     chance: { dice: [1, 3, 4, 5, 6], on: [1, 1, 1, 1, 1], rule: 'Any roll at all. Score the total of all five dice.', eq: '19' },
-    upperBonus: { title: 'Upper Bonus', rule: 'Score 63 or more across Aces through Sixes — three of each number. The small +/− shows how far ahead or behind that pace you are.', fixed: 35, plus: true },
+    upperBonus: { title: 'Upper Bonus', rule: 'Score 63 or more across Aces through Sixes — that’s three of each number. The green or red number shows how far ahead or behind that pace you are; tap it for details.', fixed: 35, plus: true },
     yahtzeeBonus: { title: 'Yahtzee Bonus', rule: 'Each extra Yahtzee after scoring 50 in the Yahtzee box. You still fill another box with it (Joker rules).', fixed: 100, plus: true },
   };
   let infoOpen = null;
@@ -465,6 +465,50 @@
     pop._anchor = anchor;
     requestAnimationFrame(() => pop.classList.add('show'));
     infoOpen = cat;
+  }
+
+  /* Bonus pace popover for one player: what the +/- means, box by box. */
+  function openPace(pi, anchor) {
+    const key = 'pace:' + pi;
+    const wasOpen = infoOpen === key;
+    main.querySelectorAll('.label.pressed, .pacecell.pressed').forEach((x) => x.classList.remove('pressed'));
+    main.querySelectorAll('.pop').forEach((x) => x.remove());
+    infoOpen = null;
+    if (wasOpen) return;
+    const p = game.players[pi];
+    const t = S.totals(p);
+    const pace = upperPace(p);
+    const name = esc(p.name);
+    let pill = '';
+    let body = '';
+    if (pace.missed) {
+      pill = '<span class="pop-pts pace-pill down">Out of reach</span>';
+      body = `Even five of each in ${name}’s open boxes can’t reach 63, so the +35 bonus is gone this game.`;
+    } else if (!pace.filled) {
+      pill = '<span class="pop-pts">Needs 63</span>';
+      body = 'Three of each number (three 1s, three 2s … three 6s) adds up to exactly 63, the bonus target. Once boxes are filled, this shows how far ahead or behind that pace you are.';
+    } else {
+      const d = pace.diff;
+      pill = `<span class="pop-pts pace-pill ${d >= 0 ? 'up' : 'down'}">${d > 0 ? `${d} ahead` : d < 0 ? `${-d} behind` : 'On pace'}</span>`;
+      const chips = S.UPPER.map((c, k) => {
+        if (p.scores[c] === null) return '';
+        const face = k + 1;
+        const diff = p.scores[c] - face * 3;
+        return `<span class="pace-chip ${diff > 0 ? 'up' : diff < 0 ? 'down' : ''}"><b>${face}s</b> ${p.scores[c]} <i>${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${Math.abs(diff)}</i></span>`;
+      }).join('');
+      const need = S.UPPER_BONUS_THRESHOLD - t.upperSum;
+      body = `Three of each number adds up to exactly 63. Compared with three of each in the boxes filled so far, ${name} is ${d > 0 ? `<b>${d} ahead</b>` : d < 0 ? `<b>${-d} behind</b>` : '<b>right on pace</b>'}. Needs ${need} more for +35.`;
+      body = `<span class="pace-chips">${chips}</span>${body}`;
+    }
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+    pop.setAttribute('role', 'tooltip');
+    pop.innerHTML = `<div class="pop-head"><span class="pop-title">Bonus pace · ${name}</span>${pill}</div><p class="pop-rule">${body}</p><i class="pop-arrow"></i>`;
+    main.appendChild(pop);
+    placePop(pop, anchor, anchor.offsetLeft + anchor.offsetWidth / 2);
+    anchor.classList.add('pressed');
+    requestAnimationFrame(() => pop.classList.add('show'));
+    infoOpen = key;
   }
 
   function renderTray() {
@@ -1053,6 +1097,7 @@
     switch (a) {
       case 'close-sheet': closeSheet(); break;
       case 'info': openInfo(el.dataset.cat, el); break;
+      case 'pace': openPace(+el.dataset.p, el); break;
       case 'rename': if (!busy && game) openRename(el.dataset.p === undefined ? null : +el.dataset.p); break;
       case 'rename-save': saveRename(); break;
       case 'settings': openSettings(); break;
@@ -1147,7 +1192,7 @@
     if (tipEl) dismissTip();
     if (!wakeLock) syncWakeLock();
     const el = e.target.closest('[data-action]');
-    if (infoOpen && !(el && el.dataset.action === 'info') && !e.target.closest('.pop')) {
+    if (infoOpen && !(el && (el.dataset.action === 'info' || el.dataset.action === 'pace')) && !e.target.closest('.pop')) {
       main.querySelectorAll('.label.pressed').forEach((x) => x.classList.remove('pressed'));
       closeInfo();
       return; // a tap outside only dismisses the popover

@@ -617,3 +617,16 @@ button.c.head:active .avatar { transform: scale(.92); }
 /* Keyboard / switch-control focus */
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
 .c:focus-visible { outline-offset: -3px; }
+
+/* Bonus pace popover */
+button.c.pacecell { color: inherit; cursor: pointer; }
+button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2); }
+.pace-pill.up { color: var(--green); background: color-mix(in srgb, var(--green) 16%, transparent); }
+.pace-pill.down { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
+.pace-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 1px 0 6px; }
+.pace-chip { font-size: 0.72rem; padding: 2px 7px; border-radius: 999px; background: var(--fill); color: var(--label); font-variant-numeric: tabular-nums; }
+.pace-chip b { font-weight: 600; }
+.pace-chip i { font-style: normal; font-weight: 700; color: var(--label-2); }
+.pace-chip.up i { color: var(--green); }
+.pace-chip.down i { color: var(--red); }
+.pop-rule b { color: var(--label); font-weight: 600; }
