@@ -699,40 +699,40 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 .avatar.swatch.picking { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--chip-color); }
 
 /* ---------- 3D dice ---------- */
-.die:not(.blank) { background: transparent; box-shadow: none; perspective: 280px; container-type: inline-size; overflow: visible; }
+.die:not(.blank) { background: transparent; box-shadow: none; perspective: 280px; overflow: visible; }
 .die:not(.blank)::after {
   content: ""; position: absolute; left: 14%; right: 14%; bottom: -7%; height: 16%; border-radius: 50%;
   background: rgba(0,0,0,.22); filter: blur(4px); z-index: -1; transition: transform .3s, opacity .3s;
 }
 .cube {
   position: absolute; inset: 0; transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
-  transform: translateZ(-50cqi) rotateX(var(--fx)) rotateY(var(--fy));
+  transform: translateZ(calc(var(--h, 26px) * -1)) rotateX(var(--fx)) rotateY(var(--fy));
 }
 .cube .face, .cube .core { position: absolute; inset: 0; }
 .cube .face {
   display: grid; place-items: center; border-radius: 12%;
   background: var(--face-bg, var(--die)); color: var(--face-pip, var(--pip));
   box-shadow: inset 0 0 0 0.5px rgba(0,0,0,.14), inset 0 -2px 5px rgba(0,0,0,.07), inset 0 2px 2px rgba(255,255,255,.8);
-  backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  backface-visibility: visible; -webkit-backface-visibility: visible;
 }
 .cube .face svg { width: 100%; height: 100%; }
-.cube .f1 { transform: translateZ(50cqi); }
-.cube .f6 { transform: rotateY(180deg) translateZ(50cqi); }
-.cube .f3 { transform: rotateY(90deg) translateZ(50cqi); }
-.cube .f4 { transform: rotateY(-90deg) translateZ(50cqi); }
-.cube .f2 { transform: rotateX(90deg) translateZ(50cqi); }
-.cube .f5 { transform: rotateX(-90deg) translateZ(50cqi); }
+.cube .f1 { transform: translateZ(var(--h, 26px)); }
+.cube .f6 { transform: rotateY(180deg) translateZ(var(--h, 26px)); }
+.cube .f3 { transform: rotateY(90deg) translateZ(var(--h, 26px)); }
+.cube .f4 { transform: rotateY(-90deg) translateZ(var(--h, 26px)); }
+.cube .f2 { transform: rotateX(90deg) translateZ(var(--h, 26px)); }
+.cube .f5 { transform: rotateX(-90deg) translateZ(var(--h, 26px)); }
 /* inner rounded cube, slightly recessed: where three rounded face corners meet,
    it shows through as a smooth bevel instead of a hard notch */
 /* closed inner box (92% size): its sides meet edge-to-edge and never cross, so
    Safari can depth-sort it reliably; it shows through the rounded corners */
 .cube .core { background: var(--face-core, #D4D4DC); inset: 4%; border-radius: 0; }
-.cube .k1 { transform: translateZ(46cqi); }
-.cube .k6 { transform: rotateY(180deg) translateZ(46cqi); }
-.cube .k3 { transform: rotateY(90deg) translateZ(46cqi); }
-.cube .k4 { transform: rotateY(-90deg) translateZ(46cqi); }
-.cube .k2 { transform: rotateX(90deg) translateZ(46cqi); }
-.cube .k5 { transform: rotateX(-90deg) translateZ(46cqi); }
+.cube .k1 { transform: translateZ(calc(var(--h, 26px) * .92)); }
+.cube .k6 { transform: rotateY(180deg) translateZ(calc(var(--h, 26px) * .92)); }
+.cube .k3 { transform: rotateY(90deg) translateZ(calc(var(--h, 26px) * .92)); }
+.cube .k4 { transform: rotateY(-90deg) translateZ(calc(var(--h, 26px) * .92)); }
+.cube .k2 { transform: rotateX(90deg) translateZ(calc(var(--h, 26px) * .92)); }
+.cube .k5 { transform: rotateX(-90deg) translateZ(calc(var(--h, 26px) * .92)); }
 /* no filters inside the 3D cube: WebKit drops or flickers 3D faces that carry a filter */
 
 .die.held { background: transparent; }
@@ -747,8 +747,8 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 .die.rolling .cube { animation: cube-roll var(--dur, .8s) cubic-bezier(.1,.55,.25,1) both; }
 .die.rolling::after { animation: shadow-hop var(--dur, .8s) cubic-bezier(.25,.6,.4,1) both; }
 @keyframes cube-roll {
-  0%   { transform: translateZ(-50cqi) rotateX(calc(var(--fx) + var(--tx))) rotateY(calc(var(--fy) + var(--ty))) rotateZ(var(--tz)); }
-  100% { transform: translateZ(-50cqi) rotateX(var(--fx)) rotateY(var(--fy)) rotateZ(0deg); }
+  0%   { transform: translateZ(calc(var(--h, 26px) * -1)) rotateX(calc(var(--fx) + var(--tx))) rotateY(calc(var(--fy) + var(--ty))) rotateZ(var(--tz)); }
+  100% { transform: translateZ(calc(var(--h, 26px) * -1)) rotateX(var(--fx)) rotateY(var(--fy)) rotateZ(0deg); }
 }
 /* "lifting off the screen": the die starts big (close to you), drops onto the table,
    then bounces up a little twice. Scale stands in for height above the screen. */
@@ -939,3 +939,4 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 .die.blank { cursor: default; }
 .die:active:not(.blank) .cube { scale: .94; }
 .die.held:active .cube { scale: .76; }
+.section-footer.version { text-align: center; margin-top: 18px; opacity: .7; }

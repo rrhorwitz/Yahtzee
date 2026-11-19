@@ -3,6 +3,7 @@
   'use strict';
 
   const S = window.Scoring;
+  const APP_VERSION = '32';
   const COLORS = ['#007AFF', '#FF9500', '#34C759', '#FF2D55', '#AF52DE', '#5AC8FA', '#5856D6', '#FFCC00'];
   const KEYS = { settings: 'yahtzee.settings', game: 'yahtzee.game', undo: 'yahtzee.undo', history: 'yahtzee.history', last: 'yahtzee.lastPlayers' };
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -317,6 +318,7 @@
       + `<div class="board" style="--cols:${n}">${h}</div>`;
     infoOpen = null;
     fitBoard();
+    sizeDice();
     animateTotals();
   }
 
@@ -399,6 +401,14 @@
       else { filled++; par += face * 3; sum += p.scores[c]; }
     });
     return { filled, diff: sum - par, missed: sum + maxLeft < S.UPPER_BONUS_THRESHOLD };
+  }
+
+  /* 3D cube half-depth in plain px, measured from the real die (Safari mis-sizes
+     container-query units inside 3D transforms). */
+  function sizeDice() {
+    const tray = main.querySelector('.tray');
+    const d = tray && tray.querySelector('.die');
+    if (d && d.offsetWidth) tray.style.setProperty('--h', d.offsetWidth / 2 + 'px');
   }
 
   /* Switch to initials / hide icons when columns get tight. */
@@ -921,7 +931,8 @@
         <button class="row" data-action="history"><span class="row-body">Scores &amp; History</span><span class="row-value empty">${history.length || ''}</span>${ICON.chev}</button>
       </div>
       <p class="section-footer">Tap a category name to see how it scores. Press and hold any score to change it.</p>
-      <p class="section-footer">Standard rules: 35-point bonus at 63 in the upper section, +100 for each extra Yahtzee, and forced Joker rules when using the dice roller.</p>`;
+      <p class="section-footer">Standard rules: 35-point bonus at 63 in the upper section, +100 for each extra Yahtzee, and forced Joker rules when using the dice roller.</p>
+      <p class="section-footer version">Version ${APP_VERSION}</p>`;
   }
   function openSettings() { openSheet({ title: 'Settings', body: settingsBody(), name: 'settings' }); }
 
@@ -1513,7 +1524,7 @@
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeInfo(); closeSheet(); } });
   let resizeTimer = null;
-  window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(fitBoard, 80); });
+  window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { fitBoard(); sizeDice(); }, 80); });
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 
   /* ---------- Boot ---------- */
