@@ -19,7 +19,6 @@
   let undoStack = store.get(KEYS.undo, []);
   let history = store.get(KEYS.history, []);
 
-  let viewing = null;     // index of a player whose card is being peeked at
   let justScored = null;  // category to flash
   let busy = false;       // true during turn transitions
   let angle = 0;          // cumulative stage rotation (deg)
@@ -28,7 +27,6 @@
   /* ---------- DOM ---------- */
   const $ = (s, r) => (r || document).querySelector(s);
   const stage = $('#stage');
-  const scroller = $('#scroller');
   const nav = $('#nav');
   const main = $('#main');
   const layer = $('#sheet-layer');
@@ -47,6 +45,7 @@
     chev: '<svg class="chev" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m1 1 6 6-6 6"/></svg>',
     minus: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M7 12h10" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>',
     plus: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M7 12h10M12 7v10" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>',
+    trophy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/></svg>',
     arrowUp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
   };
 
@@ -74,7 +73,6 @@
   const freshTurn = () => ({ dice: [1, 1, 1, 1, 1], held: [false, false, false, false, false], rolls: 0 });
   const cur = () => game.players[game.current];
   const isDone = (p) => S.totals(p).filled === 13;
-  const shownIndex = () => (viewing !== null ? viewing : game.current);
 
   function save() {
     store.set(KEYS.settings, settings);
@@ -99,7 +97,6 @@
       finished: false,
     };
     undoStack = [];
-    viewing = null;
     store.set(KEYS.last, game.players.map((p) => ({ name: p.name, seat: p.seat })));
     save();
   }
@@ -136,7 +133,6 @@
     const target = targetAngle();
     if (target === norm(angle)) {
       render();
-      scroller.scrollTop = 0;
       if (!reducedMotion.matches) {
         main.animate(
           [{ opacity: 0, transform: `translateX(${direction === -1 ? -24 : 24}px)` }, { opacity: 1, transform: 'none' }],
@@ -149,7 +145,7 @@
     const to = angle + (direction === -1 ? -180 : 180);
     angle = to;
     stage.style.transform = `rotate(${to}deg)`;
-    if (reducedMotion.matches) { render(); scroller.scrollTop = 0; return; }
+    if (reducedMotion.matches) { render(); return; }
     stage.classList.add('spinning');
     const mid = (from + to) / 2;
     const anim = stage.animate([
@@ -157,7 +153,7 @@
       { transform: `rotate(${mid}deg) scale(0.78)`, borderRadius: '44px', offset: 0.5 },
       { transform: `rotate(${to}deg) scale(1)`, borderRadius: '0px' },
     ], { duration: 900, easing: 'cubic-bezier(.65,0,.35,1)' });
-    setTimeout(() => { render(); scroller.scrollTop = 0; }, 450);
+    setTimeout(() => { render(); }, 450);
     try { await anim.finished; } catch (e) { /* cancelled */ }
     stage.classList.remove('spinning');
   }
@@ -179,8 +175,8 @@
   }
 
   function renderEmpty() {
-    nav.innerHTML = `<div class="nav-inner"><div class="nav-bar"><span></span><div class="nav-actions">
-      <button class="icon-btn" data-action="settings" aria-label="Settings">${ICON.more}</button></div></div></div>`;
+    nav.innerHTML = `<div class="nav-bar"><span></span><div class="nav-actions">
+      <button class="icon-btn" data-action="settings" aria-label="Settings">${ICON.more}</button></div></div>`;
     main.innerHTML = `<div class="empty-state">
       <img class="app-icon" src="icons/icon.svg" alt="">
       <h2>Yahtzee</h2>
@@ -192,112 +188,94 @@
 
   function renderNav() {
     const p = cur();
-    const filled = S.totals(p).filled;
-    const round = Math.min(filled + 1, 13);
-    const titleName = game.finished ? 'Final Scores' : esc(p.name);
-    const eyebrow = game.finished ? `${game.players.length === 1 ? 'Solo game' : game.players.length + ' players'}` : `Round ${round} of 13`;
-    const chips = game.players.map((pl, i) => {
-      const t = S.totals(pl);
-      const cls = ['player-chip'];
-      if (i === game.current && !game.finished) cls.push('current');
-      if (viewing === i) cls.push('viewing');
-      return `<button class="${cls.join(' ')}" style="--chip-color:${pl.color}" data-action="view" data-p="${i}" aria-label="${esc(pl.name)}, ${t.grandTotal} points">
-        <span class="avatar">${esc(pl.name.charAt(0).toUpperCase() || '?')}</span>
-        <span class="chip-text"><span class="chip-name">${esc(pl.name)}</span><span class="chip-score">${t.grandTotal} pts</span></span>
-      </button>`;
-    }).join('');
-    nav.innerHTML = `<div class="nav-inner">
-      <div class="nav-bar">
-        <button class="text-btn" data-action="new-game">New Game</button>
-        <div class="nav-actions">
-          <button class="icon-btn" data-action="undo" aria-label="Undo" ${undoStack.length ? '' : 'disabled'}>${ICON.undo}</button>
-          <button class="icon-btn" data-action="flip" aria-label="Flip card">${ICON.flip}</button>
-          <button class="icon-btn" data-action="settings" aria-label="Settings">${ICON.more}</button>
-        </div>
+    const round = Math.min(S.totals(p).filled + 1, 13);
+    const solo = game.players.length === 1;
+    const title = game.finished
+      ? '<span class="nav-name">Final Scores</span>'
+      : `<span class="dot" style="background:${p.color}"></span><span class="nav-name">${esc(p.name)}${solo ? '' : "'s turn"}</span>`;
+    nav.innerHTML = `<div class="nav-bar">
+      <div class="nav-title">
+        <div class="nav-line">${title}</div>
+        <div class="nav-sub">${game.finished ? 'Game over' : `Round ${round} of 13`}</div>
       </div>
-      <div class="title-wrap">
-        <div class="eyebrow">${eyebrow}</div>
-        <h1 class="large-title">${game.finished ? '' : `<span class="dot" style="background:${p.color}"></span>`}${titleName}</h1>
+      <div class="nav-actions">
+        ${game.finished ? `<button class="icon-btn" data-action="results" aria-label="Results">${ICON.trophy}</button>` : ''}
+        <button class="icon-btn" data-action="undo" aria-label="Undo" ${undoStack.length ? '' : 'disabled'}>${ICON.undo}</button>
+        <button class="icon-btn" data-action="flip" aria-label="Flip card">${ICON.flip}</button>
+        <button class="icon-btn" data-action="settings" aria-label="Menu">${ICON.more}</button>
       </div>
-      ${game.players.length > 1 || game.finished ? `<div class="players">${chips}</div>` : ''}
     </div>`;
   }
 
   function renderMain() {
-    const idx = shownIndex();
-    const p = game.players[idx];
-    const peeking = idx !== game.current || game.finished;
-    const t = S.totals(p);
+    const players = game.players;
+    const n = players.length;
     const turn = game.turn;
-    const diceLive = settings.dice && !peeking && turn.rolls > 0;
-    const allowed = diceLive ? S.allowedCategories(turn.dice, p.scores) : null;
-    let html = '';
+    const me = cur();
+    const diceLive = settings.dice && !game.finished && turn.rolls > 0;
+    const allowed = diceLive ? S.allowedCategories(turn.dice, me.scores) : null;
+    const totals = players.map((p) => S.totals(p));
+    const isCur = (i) => i === game.current && !game.finished;
+    const colStyle = (i) => (isCur(i) ? ` style="--pc:${players[i].color}"` : '');
+    const curCls = (i) => (isCur(i) ? ' cur' : '');
 
-    if (peeking && !game.finished) {
-      html += `<div class="banner"><span>Viewing ${esc(p.name)}'s card</span><button data-action="stop-view">Back to ${esc(cur().name)}</button></div>`;
-    } else if (game.finished && game.players.length > 1) {
-      html += `<div class="banner"><span>${esc(p.name)}'s card</span><button data-action="results">Results</button></div>`;
-    }
+    let h = '<div class="c corner"></div>';
+    h += players.map((p, i) => `<div class="c head${curCls(i)}"${colStyle(i)}>
+      <span class="avatar" style="--chip-color:${p.color}">${esc(p.name.charAt(0).toUpperCase() || '?')}</span>
+      <span class="pname">${esc(p.name)}</span></div>`).join('');
 
-    if (settings.dice && !peeking) html += renderTray();
-
-    const row = (cat) => {
-      const v = p.scores[cat];
-      const cls = ['row', 'has-icon'];
-      let value;
-      let interactive = !peeking && v === null && !busy;
-      if (v !== null) {
-        value = v === 0 ? '<span class="row-value scratched">0</span>' : `<span class="row-value">${v}</span>`;
-      } else if (diceLive) {
-        const ok = allowed.includes(cat);
-        const s = S.scoreFor(cat, turn.dice, p.scores);
-        if (!ok) { cls.push('locked'); interactive = false; }
-        value = `<span class="row-value preview ${s === 0 ? 'zero' : ''}">${s}</span>`;
-      } else {
-        value = peeking ? '<span class="row-value empty">—</span>' : `<span class="row-value empty"></span>${ICON.chev}`;
-      }
-      if (justScored === cat && idx === game.current) cls.push('just-scored');
-      if (!interactive) cls.push('disabled');
-      const tag = interactive ? 'button' : 'div';
-      return `<${tag} class="${cls.join(' ')}" ${interactive ? `data-action="score" data-cat="${cat}"` : ''}>
-        <span class="row-icon">${tile(cat)}</span>
-        <span class="row-body"><span class="row-title">${S.LABELS[cat]}</span>${!peeking && v === null && !diceLive ? `<span class="row-sub">${S.HINTS[cat]}</span>` : ''}</span>
-        ${value}
-      </${tag}>`;
+    const catRow = (cat, extra) => {
+      let r = `<div class="c label${extra || ''}"><span class="tile">${tile(cat)}</span><span class="lbl">${S.LABELS[cat]}</span></div>`;
+      players.forEach((p, i) => {
+        const v = p.scores[cat];
+        const cls = ['c', 'val' + (extra || '') + curCls(i)];
+        let inner = '';
+        let act = false;
+        if (v !== null) {
+          inner = String(v);
+          if (v === 0) cls.push('zero');
+          if (justScored === cat && isCur(i)) cls.push('flash');
+        } else if (isCur(i) && !busy) {
+          if (diceLive) {
+            if (allowed.includes(cat)) {
+              const s = S.scoreFor(cat, turn.dice, p.scores);
+              inner = `<span class="pv${s ? '' : ' z'}">${s}</span>`;
+              act = true;
+            } else cls.push('locked');
+          } else { act = true; cls.push('open'); }
+        }
+        r += act
+          ? `<button class="${cls.join(' ')}"${colStyle(i)} data-action="score" data-cat="${cat}" aria-label="Score ${S.LABELS[cat]}">${inner}</button>`
+          : `<div class="${cls.join(' ')}"${colStyle(i)}>${inner}</div>`;
+      });
+      return r;
     };
 
-    // Upper
-    const pct = Math.min(100, Math.round((t.upperSum / S.UPPER_BONUS_THRESHOLD) * 100));
-    const toGo = S.UPPER_BONUS_THRESHOLD - t.upperSum;
-    html += `<div class="section-header"><span>Upper Section</span><span class="tabular">${t.upperSum} / ${S.UPPER_BONUS_THRESHOLD}</span></div>`;
-    html += `<div class="group">${S.UPPER.map(row).join('')}
-      <div class="row">
-        <span class="row-body"><span class="row-title">Bonus</span>
-          <span class="row-sub">${t.upperBonus ? 'Earned — nice work' : `${toGo} more for +${S.UPPER_BONUS}`}</span>
-          <div class="progress ${t.upperBonus ? 'done' : ''}"><i style="width:${pct}%"></i></div>
-        </span>
-        <span class="row-value ${t.upperBonus ? '' : 'empty'}">${t.upperBonus ? '+' + t.upperBonus : '+35'}</span>
-      </div></div>`;
+    S.UPPER.forEach((c) => { h += catRow(c); });
 
-    // Lower
-    html += `<div class="section-header"><span>Lower Section</span><span class="tabular">${t.lowerSum}</span></div>`;
-    const bonusTap = !peeking && !busy;
-    html += `<div class="group">${S.LOWER.map(row).join('')}
-      <${bonusTap ? 'button' : 'div'} class="row ${p.scores.yahtzee === 50 || p.bonusCount ? '' : 'subtle'} ${bonusTap ? '' : 'disabled'}" ${bonusTap ? 'data-action="bonus"' : ''}>
-        <span class="row-body"><span class="row-title">Yahtzee Bonus</span><span class="row-sub">+${S.YAHTZEE_BONUS} for each extra Yahtzee</span></span>
-        <span class="row-value ${p.bonusCount ? '' : 'empty'}">${p.bonusCount ? '+' + t.yahtzeeBonus : '—'}</span>
-        ${bonusTap ? ICON.chev : ''}
-      </${bonusTap ? 'button' : 'div'}></div>`;
+    h += `<div class="c label sum"><span class="lbl">Bonus <small>63+</small></span></div>`;
+    h += players.map((p, i) => {
+      const t = totals[i];
+      return `<div class="c val sum${curCls(i)}${t.upperBonus ? ' earned' : ''}"${colStyle(i)}>${t.upperBonus
+        ? `+${t.upperBonus}` : `<span class="frac">${t.upperSum}<small>/63</small></span>`}</div>`;
+    }).join('');
 
-    // Totals
-    html += `<div class="section-header"><span>Totals</span></div>
-      <div class="group">
-        <div class="row"><span class="row-body">Upper total</span><span class="row-value">${t.upperTotal}</span></div>
-        <div class="row"><span class="row-body">Lower total</span><span class="row-value">${t.lowerTotal}</span></div>
-      </div>
-      <div class="grand"><span class="grand-label">Grand Total</span><span class="grand-value">${t.grandTotal}</span></div>`;
+    S.LOWER.forEach((c, k) => { h += catRow(c, k === 0 ? ' sec' : ''); });
 
-    main.innerHTML = html;
+    h += `<div class="c label sum"><span class="lbl">Yahtzee Bonus</span></div>`;
+    h += players.map((p, i) => {
+      const t = totals[i];
+      const txt = p.bonusCount ? `+${t.yahtzeeBonus}` : '';
+      if (isCur(i) && !busy) return `<button class="c val sum${curCls(i)} bonus" data-action="bonus"${colStyle(i)} aria-label="Yahtzee bonus">${txt || '<span class="plus">+</span>'}</button>`;
+      return `<div class="c val sum${curCls(i)}"${colStyle(i)}>${txt}</div>`;
+    }).join('');
+
+    h += `<div class="c label total"><span class="lbl">Total</span></div>`;
+    const best = Math.max(...totals.map((t) => t.grandTotal));
+    h += players.map((p, i) => `<div class="c val total${curCls(i)}${game.finished && n > 1 && totals[i].grandTotal === best ? ' winner' : ''}"${colStyle(i)}>${totals[i].grandTotal}</div>`).join('');
+
+    main.innerHTML = (settings.dice && !game.finished ? renderTray() : '')
+      + `<div class="board${n >= 5 ? ' many' : ''}" style="--cols:${n}">${h}</div>`;
   }
 
   function renderTray() {
@@ -307,17 +285,12 @@
       const held = rolled && turn.held[i];
       return `<button class="die ${rolled ? '' : 'blank'} ${held ? 'held' : ''}" data-action="hold" data-i="${i}" aria-label="${rolled ? `Die ${i + 1}: ${v}${held ? ', held' : ''}` : 'Die not rolled'}" ${rolled ? '' : 'disabled'}>${rolled ? dieFace(v) : ''}</button>`;
     }).join('');
-    let hint = 'Roll to start your turn';
-    if (turn.rolls === 3) hint = 'Pick a box to score';
-    else if (rolled) hint = 'Tap dice to hold';
-    if (rolled && S.isYahtzee(turn.dice)) hint = S.earnsYahtzeeBonus(turn.dice, cur().scores) ? 'Yahtzee! +100 bonus' : 'Yahtzee!';
-    const left = [0, 1, 2].map((i) => `<i class="${i < turn.rolls ? 'used' : ''}"></i>`).join('');
+    const left = 3 - turn.rolls;
     return `<div class="tray" id="tray">
       <div class="dice">${dice}</div>
-      <div class="tray-foot">
-        <div><div class="pips-left" aria-hidden="true">${left}</div><div class="tray-hint" style="margin-top:6px">${hint}</div></div>
-        <button class="btn small" data-action="roll" ${turn.rolls >= 3 || busy ? 'disabled' : ''}>${turn.rolls === 0 ? 'Roll' : 'Roll Again'}</button>
-      </div>
+      <button class="roll-btn" data-action="roll" ${left <= 0 || busy ? 'disabled' : ''}>
+        <span>Roll</span><span class="roll-pips" aria-label="${left} rolls left">${[0, 1, 2].map((k) => `<i class="${k < turn.rolls ? 'used' : ''}"></i>`).join('')}</span>
+      </button>
     </div>`;
   }
 
@@ -549,7 +522,6 @@
       bonus = true;
     }
     p.scores[cat] = value;
-    viewing = null;
     justScored = cat;
     save();
     render();
@@ -569,14 +541,10 @@
     await turnTransition(1);
     busy = false;
     render();
-    if (game.players.length > 1) {
-      toast(`<span class="dot" style="background:${cur().color}"></span>${esc(cur().name)}'s turn`);
-    }
   }
 
   function finishGame() {
     game.finished = true;
-    viewing = null;
     history = history.filter((g) => g.id !== game.id);
     history.unshift({
       id: game.id,
@@ -596,7 +564,6 @@
     if (game.finished && !prev.finished) history = history.filter((g) => g.id !== game.id);
     const changedPlayer = prev.current !== game.current || prev.finished !== game.finished;
     game = prev;
-    viewing = null;
     save();
     if (changedPlayer) await turnTransition(-1); else render();
     busy = false;
@@ -620,6 +587,7 @@
     save();
     render();
     haptic(15);
+    if (S.isYahtzee(turn.dice)) toast(S.earnsYahtzeeBonus(turn.dice, cur().scores) ? '🎲 Yahtzee! +100 bonus' : '🎲 Yahtzee!', 1800);
     if (reducedMotion.matches) return;
     const els = main.querySelectorAll('.die');
     rollingIdx.forEach((i) => els[i] && els[i].classList.add('rolling'));
@@ -678,15 +646,7 @@
       case 'bonus': if (!busy && game && !game.finished) openBonus(); break;
       case 'bonus-step': if (sheetState && sheetState.step) sheetState.step(+el.dataset.d); break;
       case 'bonus-save': if (sheetState && sheetState.saveBonus) sheetState.saveBonus(); break;
-      case 'view': {
-        if (busy) return;
-        const i = +el.dataset.p;
-        viewing = (game.finished ? i : (i === game.current || viewing === i ? null : i));
-        render();
-        break;
-      }
-      case 'view-final': viewing = +el.dataset.p; closeSheet(); render(); scroller.scrollTop = 0; break;
-      case 'stop-view': viewing = null; render(); break;
+      case 'view-final': closeSheet(); break;
       case 'results': openResults(); break;
       case 'rematch': {
         const players = game.players.map((p) => ({ name: p.name, seat: p.seat }));
@@ -724,7 +684,6 @@
         turnTransition(1).then(() => {
           busy = false;
           render();
-          if (game.players.length > 1) toast(`<span class="dot" style="background:${cur().color}"></span>${esc(cur().name)} goes first`);
         });
         break;
       }
@@ -754,11 +713,6 @@
     if (e.key === 'Enter' && e.target.matches('input[data-np]')) e.target.blur();
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
-  scroller.addEventListener('scroll', () => {
-    const y = scroller.scrollTop;
-    nav.classList.toggle('scrolled', y > 4);
-    if (y > 80) nav.classList.add('compact'); else if (y < 12) nav.classList.remove('compact');
-  }, { passive: true });
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 
   /* ---------- Boot ---------- */
