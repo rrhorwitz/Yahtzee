@@ -14,7 +14,7 @@
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
   };
 
-  let settings = Object.assign({ theme: 'system', autoRotate: true, dice: false, flip: 0, keepAwake: true, sounds: false, celebrate: true, hint: false }, store.get(KEYS.settings, {}));
+  let settings = Object.assign({ theme: 'system', autoRotate: true, dice: false, flip: 0, keepAwake: true, sounds: false, celebrate: true, hint: false, diceTheme: 'classic' }, store.get(KEYS.settings, {}));
   let game = store.get(KEYS.game, null);
   let undoStack = store.get(KEYS.undo, []);
   let history = store.get(KEYS.history, []);
@@ -534,6 +534,24 @@
     return `<span class="cube" style="--fx:${fx}deg;--fy:${fy}deg" aria-hidden="true"><i class="core c1"></i><i class="core c2"></i><i class="core c3"></i>${[1, 2, 3, 4, 5, 6].map((n) => `<span class="face f${n}">${dieFace(n)}</span>`).join('')}</span>`;
   }
 
+  const DICE_THEMES = [
+    { id: 'classic', name: 'Classic' },
+    { id: 'casino', name: 'Casino Red' },
+    { id: 'midnight', name: 'Midnight' },
+    { id: 'sparkle', name: 'Sparkle' },
+    { id: 'wood', name: 'Wood' },
+    { id: 'ocean', name: 'Ocean' },
+  ];
+  function diceThemeHtml() {
+    return `<div class="section-header"><span>Dice Style</span></div>
+      <div class="group dice-themes" role="radiogroup" aria-label="Dice style">${DICE_THEMES.map((t) => {
+        const on = (settings.diceTheme || 'classic') === t.id;
+        return `<button class="dice-theme${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-action="dice-theme" data-v="${t.id}">
+          <span class="dice-swatch theme-${t.id}">${dieFace(5)}</span><span class="dice-theme-name">${t.name}</span></button>`;
+      }).join('')}</div>
+      <p class="section-footer">${settings.dice ? 'Used by the dice roller.' : 'Turn on the Dice Roller above to roll with these.'}</p>`;
+  }
+
   function renderTray() {
     const turn = game.turn;
     const rolled = turn.rolls > 0;
@@ -542,7 +560,7 @@
       return `<button class="die ${rolled ? '' : 'blank'} ${held ? 'held' : ''}" data-action="hold" data-i="${i}" aria-label="${rolled ? `Die ${i + 1}: ${v}${held ? ', held' : ''}` : 'Die not rolled'}" ${rolled ? '' : 'disabled'}>${rolled ? cube(v) : ''}</button>`;
     }).join('');
     const left = 3 - turn.rolls;
-    return `<div class="tray${game.goldDice ? ' gold' : ''}" id="tray">
+    return `<div class="tray theme-${DICE_THEMES.some((t) => t.id === settings.diceTheme) ? settings.diceTheme : 'classic'}${game.goldDice ? ' gold' : ''}" id="tray">
       <div class="dice">${dice}</div>
       <button class="roll-btn" data-action="roll" ${left <= 0 ? 'disabled' : ''}>
         <span>Roll</span><span class="roll-pips" aria-label="${left} rolls left">${[0, 1, 2].map((k) => `<i class="${k < turn.rolls ? 'used' : ''}"></i>`).join('')}</span>
@@ -892,6 +910,7 @@
         ${sw('sounds', 'Sounds', 'Dice rolls and scoring chimes')}
         ${sw('hint', 'Best-Move Hint', 'Star the strongest box for your roll (dice roller)')}
       </div>
+      ${diceThemeHtml()}
       <div class="section-header"><span>Game</span></div>
       <div class="group">
         <button class="row" data-action="new-game"><span class="row-body" style="color:var(--accent)">New Game…</span></button>
@@ -1371,6 +1390,14 @@
           render();
           if (game.players.length > 1) toast(`<span class="dot" style="background:${cur().color}"></span>${esc(cur().name)} goes first`, 1800);
         });
+        break;
+      }
+      case 'dice-theme': {
+        settings.diceTheme = el.dataset.v;
+        save();
+        sheet.querySelectorAll('.dice-theme').forEach((b) => { const on = b.dataset.v === settings.diceTheme; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+        render();
+        haptic('light');
         break;
       }
       case 'theme': {
