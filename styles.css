@@ -985,3 +985,28 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
   filter: drop-shadow(0 3px 4px rgba(0,0,0,.22));
 }
 .face2d.still svg { display: none; }
+
+/* Totals: bold pill in each player's colour */
+.c.val.total { border-top: 1.5px solid var(--sep); }
+.c.val.total .tot {
+  display: inline-grid; place-items: center;
+  min-width: 2.3em; height: min(1.55em, calc(100% - 6px)); padding: 0 .35em;
+  border-radius: .55em; background: var(--pcol);
+  font-size: 1.05em; font-weight: 800; letter-spacing: -0.02em; line-height: 1;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--pcol) 40%, transparent);
+}
+.c.val.total.counting .tot { transform: scale(1.08); }
+.c.val.total.counting { color: inherit; transform: none; }
+.c.val.total .tot { transition: transform .15s; }
+.c.val.total.winner::before { content: "★"; color: var(--orange); font-size: .7em; margin-right: 3px; }
+.c.label.total .lbl { font-size: 1.05em; font-weight: 800; }
+:root[data-retro] .c.val.total .tot { font-family: var(--font-round); font-weight: 400; box-shadow: none; }
+/* winner: small star badge on the pill's corner */
+.c.val.total.winner::before { content: none; }
+.c.val.total .tot { position: relative; }
+.c.val.total.winner .tot::after {
+  content: "★"; position: absolute; top: -.42em; right: -.42em;
+  width: 1.25em; height: 1.25em; border-radius: 50%; display: grid; place-items: center;
+  font-size: .5em; line-height: 1; background: #fff; color: var(--orange);
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}

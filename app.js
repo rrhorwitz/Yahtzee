@@ -3,7 +3,7 @@
   'use strict';
 
   const S = window.Scoring;
-  const APP_VERSION = '37';
+  const APP_VERSION = '38';
   const COLORS = ['#007AFF', '#FF9500', '#34C759', '#FF2D55', '#AF52DE', '#5AC8FA', '#5856D6', '#FFCC00'];
   const KEYS = { settings: 'yahtzee.settings', game: 'yahtzee.game', undo: 'yahtzee.undo', history: 'yahtzee.history', last: 'yahtzee.lastPlayers' };
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -155,9 +155,11 @@
   }
 
   /* ---------- Rotation ---------- */
+  let faceSeat = null; // temporarily face a seat (the winner) regardless of turn
   function targetAngle() {
     if (!settings.autoRotate) return 0;
     let a = settings.flip || 0;
+    if (faceSeat !== null) return norm(a + faceSeat);
     if (game && game.players.length > 1 && !game.finished) a += cur().seat || 0;
     return ((a % 360) + 360) % 360;
   }
@@ -169,6 +171,7 @@
   }
 
   async function turnTransition(direction) {
+    if (faceSeat !== null && !(game && game.finished)) faceSeat = null;
     if (roller) roller.stop();
     rolling3d.clear();
     const target = targetAngle();
@@ -314,7 +317,7 @@
 
     h += `<div class="c label total"><span class="lbl">Total</span></div>`;
     const best = Math.max(...totals.map((t) => t.grandTotal));
-    h += players.map((p, i) => `<div class="c val total${curCls(i)}${game.finished && n > 1 && totals[i].grandTotal === best ? ' winner' : ''}"${colStyle(i)} aria-label="${esc(p.name)}, total ${totals[i].grandTotal}">${totals[i].grandTotal}</div>`).join('');
+    h += players.map((p, i) => `<div class="c val total${curCls(i)}${game.finished && n > 1 && totals[i].grandTotal === best ? ' winner' : ''}"${colStyle(i)} aria-label="${esc(p.name)}, total ${totals[i].grandTotal}"><span class="tot" style="--pcol:${p.color};color:${textOn(p.color)}">${totals[i].grandTotal}</span></div>`).join('');
 
     main.innerHTML = (settings.dice && !game.finished ? renderTray() : '')
       + `<div class="board" style="--cols:${n}">${h}</div>`;
@@ -336,18 +339,19 @@
     const cells = main.querySelectorAll('.c.val.total');
     now.forEach((v, i) => {
       const a = totalAnims[i];
-      if (a && a.to === v) { if (cells[i]) cells[i].textContent = String(a.current); return; } // keep running
+      const tx = (el) => (el ? el.querySelector('.tot') || el : null);
+      if (a && a.to === v) { if (cells[i]) tx(cells[i]).textContent = String(a.current); return; } // keep running
       if (!prev || prev[i] === v || reducedMotion.matches) { delete totalAnims[i]; return; }
       const from = a ? a.current : prev[i];
       const anim = { from, to: v, current: from, t0: performance.now(), dur: Math.min(900, 380 + Math.abs(v - from) * 5) };
       totalAnims[i] = anim;
-      if (cells[i]) cells[i].textContent = String(from);
+      if (cells[i]) tx(cells[i]).textContent = String(from);
       const step = (t) => {
         if (totalAnims[i] !== anim) return;
         const k = Math.min(1, (t - anim.t0) / anim.dur);
         anim.current = Math.round(anim.from + (anim.to - anim.from) * (1 - Math.pow(1 - k, 3)));
         const el = main.querySelectorAll('.c.val.total')[i];
-        if (el) { el.textContent = String(anim.current); el.classList.toggle('counting', k < 1); }
+        if (el) { tx(el).textContent = String(anim.current); el.classList.toggle('counting', k < 1); }
         if (k < 1) requestAnimationFrame(step); else delete totalAnims[i];
       };
       requestAnimationFrame(step);
@@ -1275,7 +1279,22 @@
     history.unshift({ id: game.id, date: Date.now(), players: historyPlayers() });
     history = history.slice(0, 200);
     save();
-    turnTransition(1).then(() => { openResults(); celebrate('win'); });
+    // Turn the results toward the winner for a few seconds, then back to normal.
+    const tot = game.players.map((p) => S.totals(p).grandTotal);
+    const best = Math.max(...tot);
+    const winners = game.players.filter((p, i) => tot[i] === best);
+    const faceWinner = settings.autoRotate && game.players.length > 1 && winners.length === 1;
+    if (faceWinner) faceSeat = winners[0].seat || 0;
+    const myGame = game.id;
+    turnTransition(1).then(() => {
+      openResults();
+      celebrate('win');
+      if (!faceWinner) return;
+      setTimeout(() => {
+        faceSeat = null;
+        if (game && game.id === myGame && !busy) turnTransition(-1);
+      }, 2600);
+    });
   }
 
   async function undo(steps) {
