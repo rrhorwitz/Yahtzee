@@ -1271,14 +1271,15 @@
     // 3D roll: each cube starts several full turns away on random axes and spins down
     // onto its result while hopping into the tray; dice land one after another.
     const els = main.querySelectorAll('.die');
-    const turns = () => (Math.random() < 0.5 ? -1 : 1) * 360 * (2 + Math.floor(Math.random() * 2));
+    // Start mid-tumble (not a whole number of turns) so the very first frame is already moving.
+    const turns = () => (Math.random() < 0.5 ? -1 : 1) * (360 * (1 + Math.floor(Math.random() * 2)) + 40 + Math.random() * 140);
     rollingIdx.forEach((i, k) => {
       const el = els[i];
       if (!el) return;
       el.style.setProperty('--tx', turns() + 'deg');
       el.style.setProperty('--ty', turns() + 'deg');
-      el.style.setProperty('--tz', (Math.random() - 0.5) * 90 + 'deg');
-      el.style.setProperty('--delay', k * 45 + 'ms');
+      el.style.setProperty('--tz', (Math.random() - 0.5) * 120 + 'deg');
+      el.style.setProperty('--dur', 700 + k * 45 + Math.random() * 40 + 'ms'); // land one after another, no waiting
       el.classList.remove('rolling');
       void el.offsetWidth; // restart the animation
       el.classList.add('rolling');

@@ -706,7 +706,6 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 }
 .cube {
   position: absolute; inset: 0; transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
-  will-change: transform;
   transform: translateZ(-50cqi) rotateX(var(--fx)) rotateY(var(--fy));
 }
 .cube .face, .cube .core { position: absolute; inset: 0; }
@@ -725,7 +724,9 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 .cube .f5 { transform: rotateX(-90deg) translateZ(50cqi); }
 /* inner rounded cube, slightly recessed: where three rounded face corners meet,
    it shows through as a smooth bevel instead of a hard notch */
-.cube .core { background: var(--face-core, #D4D4DC); border-radius: 30%; }
+/* closed inner box (92% size): its sides meet edge-to-edge and never cross, so
+   Safari can depth-sort it reliably; it shows through the rounded corners */
+.cube .core { background: var(--face-core, #D4D4DC); inset: 4%; border-radius: 0; }
 .cube .k1 { transform: translateZ(46cqi); }
 .cube .k6 { transform: rotateY(180deg) translateZ(46cqi); }
 .cube .k3 { transform: rotateY(90deg) translateZ(46cqi); }
@@ -742,9 +743,9 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 .die.held .cube { scale: .8; }
 .die.held:not(.blank)::after { transform: scale(.8); opacity: .6; }
 
-.die.rolling { animation: die-hop .78s cubic-bezier(.3,.7,.4,1) var(--delay, 0ms) both; }
-.die.rolling .cube { animation: cube-roll .78s cubic-bezier(.2,.65,.25,1) var(--delay, 0ms) both; }
-.die.rolling::after { animation: shadow-hop .78s cubic-bezier(.3,.7,.4,1) var(--delay, 0ms) both; }
+.die.rolling { animation: die-hop var(--dur, .8s) cubic-bezier(.25,.6,.4,1) both; }
+.die.rolling .cube { animation: cube-roll var(--dur, .8s) cubic-bezier(.1,.55,.25,1) both; }
+.die.rolling::after { animation: shadow-hop var(--dur, .8s) cubic-bezier(.25,.6,.4,1) both; }
 @keyframes cube-roll {
   0%   { transform: translateZ(-50cqi) rotateX(calc(var(--fx) + var(--tx))) rotateY(calc(var(--fy) + var(--ty))) rotateZ(var(--tz)); }
   100% { transform: translateZ(-50cqi) rotateX(var(--fx)) rotateY(var(--fy)) rotateZ(0deg); }
@@ -788,7 +789,7 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 @keyframes gold-shimmer { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 
 /* First-roll Yahtzee: slow motion, then a rubber stamp */
-.tray.slowmo .die.rolling, .tray.slowmo .die.rolling .cube, .tray.slowmo .die.rolling::after { animation-duration: 1.6s; }
+.tray.slowmo .die.rolling, .tray.slowmo .die.rolling .cube, .tray.slowmo .die.rolling::after { animation-duration: calc(var(--dur, .8s) * 2); }
 .stamp {
   position: absolute; left: 50%; top: 42%; z-index: 70; pointer-events: none;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
