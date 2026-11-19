@@ -977,3 +977,11 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
   72%, 100% { transform: none; }
 }
 @media (prefers-reduced-motion: reduce) { .die.tumble2d .face2d { animation: none; } }
+
+/* Resting dice drawn from the 3D renderer: the image is the whole die (rounded, lit) */
+.face2d.still {
+  background-color: transparent !important; background-position: center !important; background-size: 100% 100% !important; background-repeat: no-repeat !important;
+  box-shadow: none !important; border-radius: 0; animation: none !important;
+  filter: drop-shadow(0 3px 4px rgba(0,0,0,.22));
+}
+.face2d.still svg { display: none; }

@@ -235,5 +235,39 @@ export function createDiceRoller() {
     });
   }
 
-  return { roll, stop, canvas, _targets: targets, _zfix: ZFIX };
+  /* Still images of resting dice, rendered with the same lights, materials and straight-on
+     camera as the roll, so the last frame of a roll and the resting die are identical. */
+  let snapR = null;
+  let snapScene = null;
+  let snapCam = null;
+  let snapMesh = null;
+  const snapCache = {};
+  function snapshot(theme, value, px) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const size = Math.max(16, Math.round(px * dpr));
+    const keyName = `${theme}:${value}:${size}`;
+    if (snapCache[keyName]) return snapCache[keyName];
+    if (!snapR) {
+      snapR = new WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: 'low-power' });
+      snapR.setClearColor(0x000000, 0);
+      snapR.outputColorSpace = SRGBColorSpace;
+      snapScene = new Scene();
+      scene.children.filter((c) => c.isLight).forEach((l) => snapScene.add(l.clone()));
+      snapCam = new OrthographicCamera(-0.5, 0.5, 0.5, -0.5, -10, 10);
+      snapCam.position.set(0, 0, 5);
+      snapMesh = new Mesh(geo, mats('classic'));
+      snapScene.add(snapMesh);
+    }
+    snapR.setPixelRatio(1);
+    snapR.setSize(size, size, false);
+    snapMesh.material = mats(theme);
+    snapMesh.quaternion.copy(targets[value]);
+    snapMesh.position.set(0, 0, -0.5);
+    snapR.render(snapScene, snapCam);
+    const url = snapR.domElement.toDataURL('image/png');
+    snapCache[keyName] = url;
+    return url;
+  }
+
+  return { roll, stop, canvas, snapshot, _targets: targets, _zfix: ZFIX };
 }

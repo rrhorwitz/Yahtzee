@@ -3,7 +3,7 @@
   'use strict';
 
   const S = window.Scoring;
-  const APP_VERSION = '33';
+  const APP_VERSION = '34';
   const COLORS = ['#007AFF', '#FF9500', '#34C759', '#FF2D55', '#AF52DE', '#5AC8FA', '#5856D6', '#FFCC00'];
   const KEYS = { settings: 'yahtzee.settings', game: 'yahtzee.game', undo: 'yahtzee.undo', history: 'yahtzee.history', last: 'yahtzee.lastPlayers' };
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -321,6 +321,7 @@
     infoOpen = null;
     fitBoard();
     sizeDice();
+    applyDiceStills();
     animateTotals();
   }
 
@@ -403,6 +404,24 @@
       else { filled++; par += face * 3; sum += p.scores[c]; }
     });
     return { filled, diff: sum - par, missed: sum + maxLeft < S.UPPER_BONUS_THRESHOLD };
+  }
+
+  /* Resting dice use still images of the 3D dice (same look as the roll's last frame). */
+  function applyDiceStills() {
+    if (!roller || !roller.snapshot) return;
+    const els = main.querySelectorAll('.die:not(.blank)');
+    if (!els.length) return;
+    const theme = rollTheme();
+    const px = els[0].offsetWidth;
+    els.forEach((el) => {
+      const f = el.querySelector('.face2d');
+      const v = game.turn.dice[+el.dataset.i];
+      if (!f || !v) return;
+      try {
+        f.style.setProperty('background-image', `url(${roller.snapshot(theme, v, px)})`, 'important');
+        f.classList.add('still');
+      } catch (e) { /* keep the flat die */ }
+    });
   }
 
   /* 3D cube half-depth in plain px, measured from the real die (Safari mis-sizes
@@ -550,6 +569,7 @@
       s.onload = () => {
         try { roller = window.Dice3D && window.Dice3D.createDiceRoller(); } catch (e) { roller = null; }
         resolve(roller);
+        if (roller && game) render();
       };
       s.onerror = () => resolve(null);
       document.head.appendChild(s);
