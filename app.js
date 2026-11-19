@@ -102,7 +102,7 @@
       startedAt: Date.now(),
       players: players.map((p, i) => ({
         name: p.name.trim() || `Player ${i + 1}`,
-        color: COLORS[i % COLORS.length],
+        color: p.color || COLORS[i % COLORS.length],
         seat: p.seat || 0,
         scores: S.emptyScores(),
         bonusCount: 0,
@@ -112,7 +112,7 @@
       finished: false,
     };
     undoStack = [];
-    store.set(KEYS.last, game.players.map((p) => ({ name: p.name, seat: p.seat })));
+    store.set(KEYS.last, game.players.map((p) => ({ name: p.name, seat: p.seat, color: p.color })));
     save();
   }
 
@@ -123,6 +123,8 @@
         name: p.name, total: t.grandTotal, color: p.color,
         yahtzees: (p.scores.yahtzee === 50 ? 1 : 0) + (p.bonusCount || 0),
         upperBonus: t.upperBonus > 0,
+        scores: Object.assign({}, p.scores),
+        bonusCount: p.bonusCount || 0,
       };
     });
   }
@@ -218,7 +220,7 @@
     nav.innerHTML = `<div class="nav-bar">
       <div class="nav-title">
         <div class="nav-line">${title}</div>
-        <div class="nav-sub">${game.finished ? 'Game over' : `Round ${round} of 13`}</div>
+        <div class="nav-sub">${game.finished ? 'Game over' : round === 13 ? '<span class="last-round">Final round</span>' : `Round ${round} of 13`}</div>
       </div>
       <div class="nav-actions">
         ${game.finished ? `<button class="icon-btn" data-action="results" aria-label="Results">${ICON.trophy}</button>` : ''}
@@ -344,6 +346,15 @@
   }
 
   const SHORT = { threeKind: '3 Kind', fourKind: '4 Kind', fullHouse: 'F. House', smallStraight: 'Sm. Str.', largeStraight: 'Lg. Str.' };
+
+  function nextColor(currentColor, taken) {
+    const start = Math.max(0, COLORS.indexOf(currentColor));
+    for (let k = 1; k <= COLORS.length; k++) {
+      const c = COLORS[(start + k) % COLORS.length];
+      if (!taken.includes(c)) return c;
+    }
+    return currentColor || COLORS[0];
+  }
 
   /* Readable text on a player colour (dark text on light colours like yellow/teal). */
   function textOn(hex) {
@@ -651,7 +662,7 @@
       const i = +inp.dataset.rn;
       game.players[i].name = inp.value.trim() || `Player ${i + 1}`;
     });
-    store.set(KEYS.last, game.players.map((p) => ({ name: p.name, seat: p.seat })));
+    store.set(KEYS.last, game.players.map((p) => ({ name: p.name, seat: p.seat, color: p.color })));
     save();
     closeSheet();
     render();
@@ -690,6 +701,58 @@
     }
   }
 
+  function openBonusCheck(cat, v) {
+    const face = S.UPPER.indexOf(cat) + 1;
+    openSheet({
+      title: 'Another Yahtzee?',
+      left: '', right: '',
+      pending: { cat, v },
+      body: `<div class="pop-dice yb-dice">${[0, 1, 2, 3, 4].map(() => `<span class="pop-die">${dieFace(face)}</span>`).join('')}</div>
+        <p class="sheet-lede">Five ${face}s is a Yahtzee. With 50 already in the Yahtzee box, it earns a <b>+100 bonus</b>.</p>
+        <div class="actions">
+          <button class="btn block" data-action="yb-yes">Yes — score ${v} and add +100</button>
+          <button class="btn tinted block" data-action="yb-no">No, just score ${v}</button>
+        </div>`,
+    });
+  }
+
+  /* Read-only view of a finished game's full score card. */
+  function openPastCard(id) {
+    const g = history.find((x) => x.id === id);
+    if (!g) return;
+    const ps = g.players.map((p) => ({ name: p.name, color: p.color, scores: Object.assign(S.emptyScores(), p.scores), bonusCount: p.bonusCount || 0 }));
+    const tot = ps.map((p) => S.totals(p));
+    const best = Math.max(...tot.map((t) => t.grandTotal));
+    const cell = (v, cls) => `<div class="mc v${cls ? ' ' + cls : ''}">${v === null || v === undefined ? '' : v}</div>`;
+    let h = '<div class="mc corner"></div>' + ps.map((p) => `<div class="mc head"><span class="avatar${initialOf(p.name).length > 1 ? ' wide' : ''}" style="--chip-color:${p.color};color:${textOn(p.color)}" title="${esc(p.name)}">${esc(initialOf(p.name))}</span></div>`).join('');
+    S.UPPER.forEach((c) => { h += `<div class="mc l">${S.LABELS[c]}</div>` + ps.map((p) => cell(p.scores[c], p.scores[c] === 0 ? 'zero' : '')).join(''); });
+    h += '<div class="mc l sum">Bonus</div>' + tot.map((t) => cell(t.upperBonus ? '+35' : `${t.upperSum}<small>/63</small>`, 'sum' + (t.upperBonus ? ' earned' : ''))).join('');
+    S.LOWER.forEach((c, k) => { h += `<div class="mc l${k === 0 ? ' sec' : ''}">${S.LABELS[c]}</div>` + ps.map((p) => cell(p.scores[c], (p.scores[c] === 0 ? 'zero' : '') + (k === 0 ? ' sec' : ''))).join(''); });
+    h += '<div class="mc l sum">Yahtzee Bonus</div>' + tot.map((t) => cell(t.yahtzeeBonus ? '+' + t.yahtzeeBonus : '', 'sum')).join('');
+    h += '<div class="mc l total">Total</div>' + tot.map((t) => cell(t.grandTotal, 'total' + (ps.length > 1 && t.grandTotal === best ? ' winner' : ''))).join('');
+    const when = new Date(g.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    openSheet({
+      title: when,
+      left: '<button class="text-btn" data-action="history">‹ History</button>',
+      body: `<p class="sheet-lede">${ps.map((p) => esc(p.name)).join(' · ')}</p><div class="mini-card" style="--cols:${ps.length}">${h}</div>`,
+    });
+  }
+
+  /* Undo history: press and hold the Undo button. */
+  function openUndoHistory() {
+    if (!undoStack.length) return;
+    const items = undoStack.slice(-12).reverse().map((raw) => readUndo(raw).desc || 'An earlier change');
+    openSheet({
+      title: 'Undo History',
+      left: '<button class="text-btn" data-action="close-sheet">Cancel</button>', right: '',
+      body: `<div class="group">${items.map((d, k) => `<button class="row" data-action="undo-to" data-k="${k}">
+          <span class="row-icon undo-ico">${ICON.undo}</span>
+          <span class="row-body"><span class="row-title">${d}</span><span class="row-sub">${k === 0 ? 'Most recent' : `Undoes ${k + 1} changes`}</span></span>
+        </button>`).join('')}</div>
+        <p class="section-footer">Tap an entry to undo it and everything after it.</p>`,
+    });
+  }
+
   /* Yahtzee bonus stepper */
   function openBonus() {
     const p = cur();
@@ -719,19 +782,20 @@
   /* New game */
   function openNewGame() {
     const last = store.get(KEYS.last, null);
-    const draft = (last && last.length ? last : [{ name: '', seat: 0 }, { name: '', seat: 180 }]).map((p) => ({ name: p.name, seat: p.seat || 0 }));
+    const draft = (last && last.length ? last : [{ name: '', seat: 0 }, { name: '', seat: 180 }])
+      .map((p, i) => ({ name: /^player\s*\d+$/i.test(p.name || '') ? '' : (p.name || ''), seat: p.seat || 0, color: p.color || COLORS[i % COLORS.length] }));
     const draw = () => `
-      <div class="section-header"><span>Players</span><span>${draft.length}</span></div>
+      <div class="section-header"><span>Players · ${draft.length}</span>${draft.length > 1 ? '<button class="text-btn small-link" data-action="np-shuffle">Shuffle Order</button>' : ''}</div>
       <div class="group">
         ${draft.map((p, i) => `<div class="row player-row">
           ${draft.length > 1 ? `<button class="remove-btn" data-action="np-remove" data-i="${i}" aria-label="Remove player">${ICON.minus}</button>` : ''}
-          <span class="avatar" style="--chip-color:${COLORS[i % COLORS.length]};color:${textOn(COLORS[i % COLORS.length])}">${i + 1}</span>
+          <button class="avatar swatch" data-action="np-color" data-i="${i}" style="--chip-color:${p.color};color:${textOn(p.color)}" aria-label="Player ${i + 1} color, tap to change">${i + 1}</button>
           <input data-np="${i}" value="${esc(p.name)}" placeholder="Player ${i + 1}" maxlength="18" autocomplete="off" enterkeyhint="done">
           <button class="seat-btn ${p.seat ? 'far' : ''}" data-action="np-seat" data-i="${i}" aria-label="Seat side">${ICON.arrowUp}${p.seat ? 'Far side' : 'Near side'}</button>
         </div>`).join('')}
         ${draft.length < 8 ? `<button class="row add-row has-icon" data-action="np-add"><span class="row-icon" style="width:24px;height:24px">${ICON.plus}</span><span class="row-body">Add Player</span></button>` : ''}
       </div>
-      <p class="section-footer">Seat side sets which way the card faces on that player's turn. Players across the table should be on the far side.</p>
+      <p class="section-footer">Player 1 goes first. Tap a number to change that player's color. Seat side sets which way the card faces on their turn — players across the table go on the far side.</p>
       <div class="actions"><button class="btn block" data-action="np-start">Start Game</button></div>`;
     openSheet({
       title: 'New Game',
@@ -832,9 +896,11 @@
       <div class="section-header"><span>Recent Games</span></div>
       <div class="group">${history.slice(0, 25).map((g) => {
         const sorted = g.players.slice().sort((a, b) => b.total - a.total);
-        return `<div class="row"><span class="row-body"><span class="row-title">${esc(sorted[0].name)} won${sorted.length === 1 ? '' : ''}</span>
+        const hasCard = g.players.every((p) => p.scores);
+        const tag = hasCard ? 'button' : 'div';
+        return `<${tag} class="row"${hasCard ? ` data-action="past-card" data-id="${g.id}"` : ''}><span class="row-body"><span class="row-title">${sorted.length === 1 ? `${sorted[0].total} points` : `${esc(sorted[0].name)} won`}</span>
           <span class="row-sub">${sorted.map((p) => `${esc(p.name)} ${p.total}`).join(' · ')}</span></span>
-          <span class="row-value empty" style="font-size:13px">${fmt(g.date)}</span></div>`;
+          <span class="row-value empty" style="font-size:0.765rem">${fmt(g.date)}</span>${hasCard ? ICON.chev : ''}</${tag}>`;
       }).join('')}</div>
       <div class="actions"><button class="btn destructive block" data-action="clear-history">Clear History</button></div>`;
   }
@@ -973,9 +1039,17 @@
   });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => main.addEventListener(t, cancelPress));
   main.addEventListener('contextmenu', (e) => { if (e.target.closest('.c.filled')) e.preventDefault(); });
+  let undoHold = null;
+  nav.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('[data-action="undo"]') || busy || undoStack.length < 1) return;
+    pressFired = false;
+    undoHold = setTimeout(() => { undoHold = null; pressFired = true; haptic('heavy'); openUndoHistory(); }, 480);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => nav.addEventListener(t, () => { clearTimeout(undoHold); undoHold = null; }));
+  nav.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-action="undo"]')) e.preventDefault(); });
 
   /* ---------- Actions ---------- */
-  async function commitScore(cat, value) {
+  async function commitScore(cat, value, opts) {
     if (busy || !game || game.finished) return;
     const p = cur();
     if (p.scores[cat] !== null) return;
@@ -983,7 +1057,7 @@
     closeSheet();
     pushUndo(`${esc(p.name)}'s ${value} in ${S.LABELS[cat]}`);
     let bonus = false;
-    if (settings.dice && game.turn.rolls > 0 && S.earnsYahtzeeBonus(game.turn.dice, p.scores)) {
+    if ((opts && opts.yahtzeeBonus && p.scores.yahtzee === 50) || (settings.dice && game.turn.rolls > 0 && S.earnsYahtzeeBonus(game.turn.dice, p.scores))) {
       p.bonusCount = (p.bonusCount || 0) + 1;
       bonus = true;
     }
@@ -1007,12 +1081,17 @@
       return;
     }
     const scorer = game.current;
-    game.current = (game.current + 1) % game.players.length;
+    // Next player who still has open boxes (defensive: everyone normally has the same number).
+    do { game.current = (game.current + 1) % game.players.length; } while (isDone(cur()) && game.current !== scorer);
     game.turn = freshTurn();
     save();
     await turnTransition(1);
     busy = false;
     render();
+    if (game.current === 0 && S.totals(cur()).filled === 12 && game.players.length > 0) {
+      toast('🏁 Last round!', 2200);
+      haptic('medium');
+    }
     maybeTips({ p: scorer, cat });
   }
 
@@ -1025,11 +1104,15 @@
     turnTransition(1).then(() => { openResults(); celebrate('win'); });
   }
 
-  async function undo() {
-    if (busy || !undoStack.length) return;
+  async function undo(steps) {
+    const n = Math.min(steps || 1, undoStack.length);
+    if (busy || !n) return;
     busy = true;
     closeSheet();
-    const { game: prev, desc } = readUndo(undoStack.pop());
+    let prev = null;
+    let desc = '';
+    for (let k = 0; k < n; k++) ({ game: prev, desc } = readUndo(undoStack.pop()));
+    if (n > 1) desc = `${n} changes`;
     if (game.finished && !prev.finished) history = history.filter((g) => g.id !== game.id);
     const changedPlayer = prev.current !== game.current || prev.finished !== game.finished;
     game = prev;
@@ -1059,17 +1142,33 @@
     sfx('roll', rollingIdx.length);
     if (S.isYahtzee(turn.dice)) toast(S.earnsYahtzeeBonus(turn.dice, cur().scores) ? '🎲 Yahtzee! +100 bonus' : '🎲 Yahtzee!', 1800);
     if (reducedMotion.matches) return;
+    // Tumble: each die spins on its own random axes, lands with a small bounce,
+    // and flips through faces until it settles on its result.
     const els = main.querySelectorAll('.die');
-    rollingIdx.forEach((i) => els[i] && els[i].classList.add('rolling'));
-    let ticks = 0;
-    const iv = setInterval(() => {
-      ticks++;
-      rollingIdx.forEach((i) => { if (els[i]) els[i].innerHTML = dieFace(1 + Math.floor(Math.random() * 6)); });
-      if (ticks >= 5) {
-        clearInterval(iv);
-        rollingIdx.forEach((i) => { if (els[i]) els[i].innerHTML = dieFace(turn.dice[i]); });
-      }
-    }, 70);
+    const spin = () => (Math.random() < 0.5 ? -1 : 1) * (240 + Math.random() * 300);
+    rollingIdx.forEach((i, k) => {
+      const el = els[i];
+      if (!el) return;
+      el.style.setProperty('--rx', spin() + 'deg');
+      el.style.setProperty('--ry', spin() + 'deg');
+      el.style.setProperty('--rz', (Math.random() - 0.5) * 120 + 'deg');
+      el.style.animationDelay = k * 35 + 'ms';
+      el.classList.remove('rolling');
+      void el.offsetWidth; // restart the animation
+      el.classList.add('rolling');
+    });
+    const t0 = performance.now();
+    const flick = () => {
+      const t = performance.now() - t0;
+      rollingIdx.forEach((i, k) => {
+        const el = els[i];
+        if (!el) return;
+        const settle = 380 + k * 35;
+        el.innerHTML = dieFace(t < settle ? 1 + Math.floor(Math.random() * 6) : turn.dice[i]);
+      });
+      if (t < 380 + rollingIdx.length * 35) setTimeout(flick, 65);
+    };
+    flick();
   }
 
   function onScoreTap(cat) {
@@ -1103,7 +1202,10 @@
       case 'settings': openSettings(); break;
       case 'history': openHistory(sheetState && sheetState.name === 'settings'); break;
       case 'new-game': openNewGame(); break;
-      case 'undo': undo(); break;
+      case 'undo': undo(1); break;
+      case 'reload': location.reload(); break;
+      case 'past-card': openPastCard(+el.dataset.id); break;
+      case 'undo-to': undo(+el.dataset.k + 1); break;
       case 'flip': flip(); break;
       case 'roll': roll(); break;
       case 'hold': {
@@ -1119,8 +1221,17 @@
       case 'score': if (!busy) onScoreTap(el.dataset.cat); break;
       case 'pick':
         if (sheetState && sheetState.edit) applyEdit(sheetState.edit.pi, sheetState.cat, +el.dataset.v);
-        else if (sheetState && sheetState.cat) commitScore(sheetState.cat, +el.dataset.v);
+        else if (sheetState && sheetState.cat) {
+          const cat = sheetState.cat;
+          const v = +el.dataset.v;
+          const ui = S.UPPER.indexOf(cat);
+          // Five of a number with 50 already in the Yahtzee box can only be another Yahtzee.
+          if (ui >= 0 && v === (ui + 1) * 5 && cur().scores.yahtzee === 50) openBonusCheck(cat, v);
+          else commitScore(cat, v);
+        }
         break;
+      case 'yb-yes': if (sheetState && sheetState.pending) { const { cat, v } = sheetState.pending; commitScore(cat, v, { yahtzeeBonus: true }); } break;
+      case 'yb-no': if (sheetState && sheetState.pending) { const { cat, v } = sheetState.pending; commitScore(cat, v); } break;
       case 'share': shareResults(); break;
       case 'gc-show': NATIVE.gameCenter.show().catch((err) => toast(esc(err.message || 'Game Center unavailable'))); break;
       case 'gc-post': openGameCenterPost(); break;
@@ -1137,10 +1248,16 @@
       case 'bonus-save': if (sheetState && sheetState.saveBonus) sheetState.saveBonus(); break;
       case 'results': openResults(); break;
       case 'rematch': {
-        const players = game.players.map((p) => ({ name: p.name, seat: p.seat }));
+        const players = game.players.map((p) => ({ name: p.name, seat: p.seat, color: p.color }));
+        if (players.length > 1) players.push(players.shift()); // next player starts this time
         closeSheet();
         createGame(players);
-        turnTransition(1);
+        busy = true;
+        turnTransition(1).then(() => {
+          busy = false;
+          render();
+          if (game.players.length > 1) toast(`<span class="dot" style="background:${cur().color}"></span>${esc(cur().name)} goes first`, 1800);
+        });
         break;
       }
       case 'theme': {
@@ -1157,7 +1274,26 @@
         refreshSheetBody(historyBody());
         break;
       }
-      case 'np-add': syncDraft(); sheetState.draft.push({ name: '', seat: sheetState.draft.length % 2 ? 180 : 0 }); sheetState.redraw(); {
+      case 'np-color': {
+        syncDraft();
+        const d = sheetState.draft;
+        const i = +el.dataset.i;
+        d[i].color = nextColor(d[i].color, d.filter((_, k) => k !== i).map((x) => x.color));
+        sheetState.redraw();
+        break;
+      }
+      case 'np-shuffle': {
+        syncDraft();
+        const d = sheetState.draft;
+        const before = d.map((x) => x.color).join();
+        for (let tries = 0; tries < 6 && d.map((x) => x.color).join() === before; tries++) {
+          for (let k = d.length - 1; k > 0; k--) { const r = Math.floor(Math.random() * (k + 1)); [d[k], d[r]] = [d[r], d[k]]; }
+        }
+        sheetState.redraw();
+        haptic('light');
+        break;
+      }
+      case 'np-add': syncDraft(); sheetState.draft.push({ name: '', seat: sheetState.draft.length % 2 ? 180 : 0, color: nextColor(null, sheetState.draft.map((x) => x.color)) }); sheetState.redraw(); {
         const inputs = sheet.querySelectorAll('input[data-np]');
         if (inputs.length) inputs[inputs.length - 1].focus();
       } break;
@@ -1229,9 +1365,26 @@
   else if (game.finished) setTimeout(openResults, 300);
 
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+    const hadController = !!navigator.serviceWorker.controller;
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        // Look for a new version whenever the app comes back to the foreground.
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+      }).catch(() => {});
+    });
+    // A new version took over: offer a refresh (games are saved, so reloading is safe).
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) showUpdateBanner(); });
+  }
+  function showUpdateBanner() {
+    if (stage.querySelector('.update-banner')) return;
+    const b = document.createElement('div');
+    b.className = 'update-banner';
+    b.setAttribute('role', 'status');
+    b.innerHTML = '<span>New version available</span><button data-action="reload">Refresh</button>';
+    stage.appendChild(b);
+    requestAnimationFrame(() => b.classList.add('show'));
   }
 
   // Exposed for automated tests.
-  window.__yahtzee = { get game() { return game; }, get settings() { return settings; }, commitScore, render };
+  window.__yahtzee = { get game() { return game; }, get settings() { return settings; }, commitScore, render, showUpdateBanner };
 })();
