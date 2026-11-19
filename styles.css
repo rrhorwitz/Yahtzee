@@ -757,3 +757,5 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 }
 @media (prefers-reduced-motion: reduce) { .die.rolling, .die.rolling .cube, .die.rolling::after { animation: none; } }
 .die { position: relative; }
+/* The score screen never scrolls — not even programmatically (e.g. focus or 3D dice overhang). */
+.stage, .screen { overflow: clip; }
