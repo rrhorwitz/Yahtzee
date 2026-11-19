@@ -74,13 +74,37 @@
   /* ---------- Sounds (synthesized, no files) ---------- */
   let ac = null;
   function audio() {
-    if (!ac) {
+    if (!ac || ac.state === 'closed') {
       const A = window.AudioContext || window.webkitAudioContext;
       if (!A) return null;
       ac = new A();
     }
-    if (ac.state === 'suspended') ac.resume();
+    // iOS home-screen apps come back from the background "interrupted", not "suspended"
+    if (ac.state !== 'running') ac.resume().catch(() => {});
     return ac;
+  }
+  /* iOS only lets audio start inside a tap. Unlock on the first touch (and again after the
+     app returns from the background) by playing one silent sample. */
+  function unlock() {
+    const a = audio();
+    if (!a) return;
+    try {
+      const b = a.createBuffer(1, 1, a.sampleRate);
+      const s = a.createBufferSource();
+      s.buffer = b;
+      s.connect(a.destination);
+      s.start(0);
+    } catch (e) { /* ignore */ }
+  }
+  let unlocked = false;
+  const arm = () => { if (unlocked) return; unlocked = true; unlock(); };
+  ['pointerdown', 'touchend', 'keydown'].forEach((t) => document.addEventListener(t, arm, { capture: true, passive: true }));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') unlocked = false; // re-unlock on the next tap
+  });
+  /* Silent switch: 'ambient' respects it (default); 'playback' plays anyway (iOS 17+). */
+  function setIgnoreSilent(on) {
+    try { if (navigator.audioSession) navigator.audioSession.type = on ? 'playback' : 'ambient'; } catch (e) { /* unsupported */ }
   }
   /* Wooden dice: each impact is a few fast-decaying resonant modes (the hard die)
      plus a short click and, for harder hits, a low "bowl" body resonance. */
@@ -314,5 +338,5 @@
     return 'downloaded';
   }
 
-  window.FX = { confetti, sound, shareResults, drawResults, SOUNDS };
+  window.FX = { confetti, sound, shareResults, drawResults, SOUNDS, setIgnoreSilent, unlock };
 })();
