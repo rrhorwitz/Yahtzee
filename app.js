@@ -557,7 +557,9 @@
     const rolled = turn.rolls > 0;
     const dice = turn.dice.map((v, i) => {
       const held = rolled && turn.held[i];
-      return `<button class="die ${rolled ? '' : 'blank'} ${held ? 'held' : ''}" data-action="hold" data-i="${i}" aria-label="${rolled ? `Die ${i + 1}: ${v}${held ? ', held' : ''}` : 'Die not rolled'}" ${rolled ? '' : 'disabled'}>${rolled ? cube(v) : ''}</button>`;
+      // A div, not a <button>: Safari clips a button's contents to its box, which slices
+      // the corners off the tumbling 3D cube.
+      return `<div class="die ${rolled ? '' : 'blank'} ${held ? 'held' : ''}" ${rolled ? 'role="button" tabindex="0"' : 'aria-disabled="true"'} aria-pressed="${held}" data-action="hold" data-i="${i}" aria-label="${rolled ? `Die ${i + 1}: ${v}${held ? ', held' : ''}` : 'Die not rolled'}">${rolled ? cube(v) : ''}</div>`;
     }).join('');
     const left = 3 - turn.rolls;
     return `<div class="tray theme-${DICE_THEMES.some((t) => t.id === settings.diceTheme) ? settings.diceTheme : 'classic'}${game.goldDice ? ' gold' : ''}" id="tray">
@@ -1506,6 +1508,8 @@
   });
   stage.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.matches('input[data-np]')) e.target.blur();
+    // keyboard / Switch Control for the div-based dice
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.die[role="button"]')) { e.preventDefault(); e.target.click(); }
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeInfo(); closeSheet(); } });
   let resizeTimer = null;
