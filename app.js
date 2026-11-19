@@ -3,7 +3,7 @@
   'use strict';
 
   const S = window.Scoring;
-  const APP_VERSION = '34';
+  const APP_VERSION = '35';
   const COLORS = ['#007AFF', '#FF9500', '#34C759', '#FF2D55', '#AF52DE', '#5AC8FA', '#5856D6', '#FFCC00'];
   const KEYS = { settings: 'yahtzee.settings', game: 'yahtzee.game', undo: 'yahtzee.undo', history: 'yahtzee.history', last: 'yahtzee.lastPlayers' };
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -406,6 +406,7 @@
     return { filled, diff: sum - par, missed: sum + maxLeft < S.UPPER_BONUS_THRESHOLD };
   }
 
+  const decoded = new Set();
   /* Resting dice use still images of the 3D dice (same look as the roll's last frame). */
   function applyDiceStills() {
     if (!roller || !roller.snapshot) return;
@@ -418,7 +419,9 @@
       const v = game.turn.dice[+el.dataset.i];
       if (!f || !v) return;
       try {
-        f.style.setProperty('background-image', `url(${roller.snapshot(theme, v, px)})`, 'important');
+        const url = roller.snapshot(theme, v, px);
+        if (!decoded.has(url)) { decoded.add(url); const im = new Image(); im.src = url; if (im.decode) im.decode().catch(() => {}); }
+        f.style.setProperty('background-image', `url(${url})`, 'important');
         f.classList.add('still');
       } catch (e) { /* keep the flat die */ }
     });
@@ -1354,6 +1357,7 @@
     roller.roll(stage, box, dice, { theme: rollTheme(), duration: dur, slow }).then(() => {
       if (play3dRoll.current !== myRoll) return;
       rolling3d.clear();
+      // reveal the stills in the same frame as the last 3D frame (canvas clears two frames later)
       main.querySelectorAll('.die.in-air').forEach((el) => el.classList.remove('in-air'));
     });
   }

@@ -217,21 +217,22 @@ export function createDiceRoller() {
           d.mesh.position.set(cx, cy, -d.size / 2);
           const lift = (s - 1) / 0.45;
           d.shadow.scale.set(d.size * (1.05 + lift * 0.5), d.size * (1.05 + lift * 0.5), 1);
-          d.shadow.position.set(cx + lift * d.size * 0.12, cy - d.size * 0.1 - lift * d.size * 0.3, -d.size * 1.2);
-          d.shadow.material.opacity = 1 - lift * 0.65;
+          d.shadow.position.set(cx + lift * d.size * 0.12, cy - 3 - lift * d.size * 0.3, -d.size * 1.2);
+          d.shadow.material.opacity = 0.55 - lift * 0.3;
         });
         renderer.render(scene, camera);
-        if (running) raf = requestAnimationFrame(frame);
+        if (running || window.__diceHoldEnd) raf = requestAnimationFrame(frame); // __diceHoldEnd: test hook
         else {
           list.forEach((d) => { scene.remove(d.mesh); scene.remove(d.shadow); });
           active = null;
           resolve();
           // hide on the next frame, after the flat dice have been revealed underneath
-          requestAnimationFrame(clear);
+          // keep the last 3D frame on screen until the stills have definitely been painted
+          requestAnimationFrame(() => requestAnimationFrame(clear));
         }
       };
       active = { dice: list, done: resolve };
-      raf = requestAnimationFrame(frame);
+      frame(performance.now()); // draw the first frame right away so the canvas is never empty while visible
     });
   }
 
