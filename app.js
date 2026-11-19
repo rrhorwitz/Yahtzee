@@ -552,8 +552,9 @@
     layer.classList.add('open');
     layer.setAttribute('aria-hidden', 'false');
   }
-  function refreshSheetBody(html) { const b = $('.sheet-body', sheet); if (b) b.innerHTML = html; }
+  function refreshSheetBody(html) { colorPop = null; const b = $('.sheet-body', sheet); if (b) b.innerHTML = html; }
   function closeSheet() {
+    colorPop = null;
     if (!layer.classList.contains('open')) return;
     if (sheetState && sheetState.onClose) sheetState.onClose();
     layer.classList.remove('open');
@@ -644,28 +645,82 @@
 
   /* Rename players (any time during a game) */
   function openRename(focusIdx) {
-    const body = `<div class="group">${game.players.map((p, i) => `<div class="row player-row">
-        <span class="avatar${initialOf(p.name).length > 1 ? ' wide' : ''}" style="--chip-color:${p.color};color:${textOn(p.color)}">${esc(initialOf(p.name))}</span>
-        <input data-rn="${i}" value="${/^player\s*\d+$/i.test(p.name) ? '' : esc(p.name)}" placeholder="Player ${i + 1}" maxlength="18" autocomplete="off" enterkeyhint="done" aria-label="Name for player ${i + 1}">
-      </div>`).join('')}</div>
-      <p class="section-footer">Leave a name blank to use “Player 1”, “Player 2”…</p>`;
+    const people = game.players.map((p) => ({ name: /^player\s*\d+$/i.test(p.name) ? '' : p.name, color: p.color }));
+    const draw = () => `<div class="group">${people.map((p, i) => {
+        const shown = p.name.trim() || `Player ${i + 1}`;
+        return `<div class="row player-row">
+        <button class="avatar swatch${initialOf(shown).length > 1 ? ' wide' : ''}" data-action="rn-color" data-i="${i}" style="--chip-color:${p.color};color:${textOn(p.color)}" aria-label="${esc(shown)}'s color, tap to change">${esc(initialOf(shown))}</button>
+        <input data-rn="${i}" value="${esc(p.name)}" placeholder="Player ${i + 1}" maxlength="18" autocomplete="off" enterkeyhint="done" aria-label="Name for player ${i + 1}">
+      </div>`;
+      }).join('')}</div>
+      <p class="section-footer">Tap a player's initial to change their color. Leave a name blank to use “Player 1”, “Player 2”…</p>`;
     openSheet({
       title: 'Players',
       left: '<button class="text-btn" data-action="close-sheet">Cancel</button>',
       right: '<button class="text-btn bold" data-action="rename-save">Save</button>',
-      body,
+      body: draw(),
+      people,
+      redraw() { syncRename(); refreshSheetBody(draw()); },
     });
     if (focusIdx !== null) setTimeout(() => { const el = sheet.querySelector(`input[data-rn="${focusIdx}"]`); if (el) el.focus(); }, 350);
   }
+  function syncRename() {
+    if (!sheetState || !sheetState.people) return;
+    sheet.querySelectorAll('input[data-rn]').forEach((inp) => { sheetState.people[+inp.dataset.rn].name = inp.value; });
+  }
   function saveRename() {
-    sheet.querySelectorAll('input[data-rn]').forEach((inp) => {
-      const i = +inp.dataset.rn;
-      game.players[i].name = inp.value.trim() || `Player ${i + 1}`;
+    syncRename();
+    sheetState.people.forEach((x, i) => {
+      game.players[i].name = x.name.trim() || `Player ${i + 1}`;
+      game.players[i].color = x.color;
     });
     store.set(KEYS.last, game.players.map((p) => ({ name: p.name, seat: p.seat, color: p.color })));
     save();
     closeSheet();
     render();
+  }
+
+  /* Colour picker: all colours at once. A colour already in use shows that player's
+     initial; picking it swaps the two players' colours. */
+  const COLOR_NAMES = ['Blue', 'Orange', 'Green', 'Pink', 'Purple', 'Light Blue', 'Indigo', 'Yellow'];
+  const CHECK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+  let colorPop = null;
+  function closeColorPicker() {
+    if (colorPop) { colorPop.remove(); colorPop = null; }
+    sheet.querySelectorAll('.avatar.swatch.picking').forEach((x) => x.classList.remove('picking'));
+  }
+  function offsetIn(el, host) {
+    let x = 0;
+    let y = 0;
+    for (let n = el; n && n !== host; n = n.offsetParent) { x += n.offsetLeft; y += n.offsetTop; }
+    return { x, y };
+  }
+  function openColorPicker(anchor, list, i, onDone) {
+    const same = colorPop && colorPop._i === i;
+    closeColorPicker();
+    if (same) return;
+    const host = anchor.closest('.sheet-body');
+    const nameOf = (k) => list[k].name.trim() || `Player ${k + 1}`;
+    const pop = document.createElement('div');
+    pop.className = 'pop color-pop below';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-label', `Color for ${nameOf(i)}`);
+    pop.innerHTML = `<div class="swatches">${COLORS.map((c, k) => {
+      const mine = list[i].color === c;
+      const owner = list.findIndex((x, n) => n !== i && x.color === c);
+      const label = `${COLOR_NAMES[k]}${mine ? ', current' : owner >= 0 ? `, used by ${esc(nameOf(owner))} — swap` : ''}`;
+      return `<button class="swatch-btn${mine ? ' on' : ''}${owner >= 0 ? ' taken' : ''}" data-action="cp-pick" data-c="${c}" style="--chip-color:${c};color:${textOn(c)}" aria-label="${label}">${mine ? CHECK : owner >= 0 ? esc(initialOf(nameOf(owner))) : ''}</button>`;
+    }).join('')}</div><i class="pop-arrow"></i>`;
+    host.appendChild(pop);
+    const at = offsetIn(anchor, host);
+    const left = Math.max(4, Math.min(at.x - 12, host.clientWidth - pop.offsetWidth - 4));
+    pop.style.left = left + 'px';
+    pop.style.top = at.y + anchor.offsetHeight + 10 + 'px';
+    pop.style.setProperty('--ax', at.x + anchor.offsetWidth / 2 - left + 'px');
+    anchor.classList.add('picking');
+    Object.assign(pop, { _i: i, _list: list, _done: onDone });
+    colorPop = pop;
+    requestAnimationFrame(() => pop.classList.add('show'));
   }
 
   /* One-time tips */
@@ -789,13 +844,13 @@
       <div class="group">
         ${draft.map((p, i) => `<div class="row player-row">
           ${draft.length > 1 ? `<button class="remove-btn" data-action="np-remove" data-i="${i}" aria-label="Remove player">${ICON.minus}</button>` : ''}
-          <button class="avatar swatch" data-action="np-color" data-i="${i}" style="--chip-color:${p.color};color:${textOn(p.color)}" aria-label="Player ${i + 1} color, tap to change">${i + 1}</button>
+          <button class="avatar swatch" data-action="np-color" data-i="${i}" style="--chip-color:${p.color};color:${textOn(p.color)}" aria-label="Player ${i + 1} color, tap to pick">${i + 1}</button>
           <input data-np="${i}" value="${esc(p.name)}" placeholder="Player ${i + 1}" maxlength="18" autocomplete="off" enterkeyhint="done">
           <button class="seat-btn ${p.seat ? 'far' : ''}" data-action="np-seat" data-i="${i}" aria-label="Seat side">${ICON.arrowUp}${p.seat ? 'Far side' : 'Near side'}</button>
         </div>`).join('')}
         ${draft.length < 8 ? `<button class="row add-row has-icon" data-action="np-add"><span class="row-icon" style="width:24px;height:24px">${ICON.plus}</span><span class="row-body">Add Player</span></button>` : ''}
       </div>
-      <p class="section-footer">Player 1 goes first. Tap a number to change that player's color. Seat side sets which way the card faces on their turn — players across the table go on the far side.</p>
+      <p class="section-footer">Player 1 goes first. Tap a number to pick that player's color. Seat side sets which way the card faces on their turn — players across the table go on the far side.</p>
       <div class="actions"><button class="btn block" data-action="np-start">Start Game</button></div>`;
     openSheet({
       title: 'New Game',
@@ -1276,10 +1331,24 @@
       }
       case 'np-color': {
         syncDraft();
-        const d = sheetState.draft;
-        const i = +el.dataset.i;
-        d[i].color = nextColor(d[i].color, d.filter((_, k) => k !== i).map((x) => x.color));
-        sheetState.redraw();
+        openColorPicker(el, sheetState.draft, +el.dataset.i, () => { syncDraft(); sheetState.redraw(); });
+        break;
+      }
+      case 'rn-color': {
+        syncRename();
+        openColorPicker(el, sheetState.people, +el.dataset.i, () => sheetState.redraw());
+        break;
+      }
+      case 'cp-pick': {
+        if (!colorPop) break;
+        const { _list: list, _i: i, _done: done } = colorPop;
+        const c = el.dataset.c;
+        const other = list.findIndex((x, k) => k !== i && x.color === c);
+        if (other >= 0) list[other].color = list[i].color; // swap
+        list[i].color = c;
+        haptic('light');
+        closeColorPicker();
+        done();
         break;
       }
       case 'np-shuffle': {
@@ -1326,6 +1395,7 @@
   stage.addEventListener('click', (e) => {
     if (pressFired) { pressFired = false; e.preventDefault(); return; }
     if (tipEl) dismissTip();
+    if (colorPop && !e.target.closest('.color-pop') && !e.target.closest('[data-action="np-color"], [data-action="rn-color"]')) closeColorPicker();
     if (!wakeLock) syncWakeLock();
     const el = e.target.closest('[data-action]');
     if (infoOpen && !(el && (el.dataset.action === 'info' || el.dataset.action === 'pace')) && !e.target.closest('.pop')) {
