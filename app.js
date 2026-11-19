@@ -503,7 +503,7 @@
     const pop = document.createElement('div');
     pop.className = 'pop';
     pop.setAttribute('role', 'tooltip');
-    pop.innerHTML = `<div class="pop-head"><span class="pop-title">Bonus pace · ${name}</span>${pill}</div><p class="pop-rule">${body}</p><i class="pop-arrow"></i>`;
+    pop.innerHTML = `<div class="pop-head"><span class="pop-title">Bonus pace</span>${pill}</div><p class="pop-rule">${body}</p><i class="pop-arrow"></i>`;
     main.appendChild(pop);
     placePop(pop, anchor, anchor.offsetLeft + anchor.offsetWidth / 2);
     anchor.classList.add('pressed');

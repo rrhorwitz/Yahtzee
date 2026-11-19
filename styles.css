@@ -630,3 +630,8 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 .pace-chip.up i { color: var(--green); }
 .pace-chip.down i { color: var(--red); }
 .pop-rule b { color: var(--label); font-weight: 600; }
+
+/* Popover header always stays on one line */
+.pop-head { flex-wrap: nowrap; min-width: 0; }
+.pop-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pop-pts { flex: none; white-space: nowrap; }
