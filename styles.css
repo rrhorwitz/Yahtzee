@@ -54,7 +54,7 @@
     --red: #FF453A;
     --green: #30D158;
     --orange: #FF9F0A;
-    --die: #F2F2F7;
+    --die: #FFFFFF;
     --pip: #1C1C1E;
     --shadow: none;
     --backdrop: rgba(0, 0, 0, 0.55);
@@ -81,7 +81,7 @@
   --red: #FF453A;
   --green: #30D158;
   --orange: #FF9F0A;
-  --die: #F2F2F7;
+  --die: #FFFFFF;
   --pip: #1C1C1E;
   --shadow: none;
   --backdrop: rgba(0, 0, 0, 0.55);
@@ -298,7 +298,7 @@ button.row:active, .row.pressable:active { background: var(--fill-2); transition
   display: flex; align-items: center; gap: 10px;
   padding: 10px; border-radius: 16px; background: var(--card);
 }
-.dice { flex: 1; display: flex; gap: 8px; min-width: 0; }
+.dice { flex: 1; display: flex; gap: 6px; min-width: 0; }
 .die {
   flex: 1; max-width: 52px; aspect-ratio: 1;
   border-radius: 22%;
@@ -307,16 +307,17 @@ button.row:active, .row.pressable:active { background: var(--fill-2); transition
   display: grid; place-items: center;
   transition: transform .25s cubic-bezier(.3,1.4,.5,1), box-shadow .2s;
 }
-.die svg { width: 78%; height: 78%; }
+.die { color: var(--pip); }
+.die svg { width: 100%; height: 100%; }
 .die.blank { background: var(--fill); box-shadow: none; }
-.die.held { transform: translateY(-3px); box-shadow: 0 0 0 3px var(--accent), 0 6px 14px rgba(0,0,0,.18); }
+.die.held { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, #fff); transform: translateY(-3px); box-shadow: 0 0 0 2.5px var(--accent), 0 6px 14px rgba(0,0,0,.18); }
 .die.rolling { animation: shake .45s ease-in-out; }
 @keyframes shake {
   0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-14deg) scale(.92); }
   50% { transform: rotate(12deg) scale(1.04); } 75% { transform: rotate(-6deg) scale(.98); } 100% { transform: rotate(0) scale(1); }
 }
 .roll-btn {
-  flex: none; width: 76px; align-self: stretch; min-height: 48px;
+  flex: none; width: 64px; align-self: stretch; min-height: 48px;
   border-radius: 12px; background: var(--accent); color: #fff;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
   font-size: 16px; font-weight: 600;
@@ -519,7 +520,8 @@ button.row:active, .row.pressable:active { background: var(--fill-2); transition
   width: 22px; height: 22px; border-radius: 5px; background: var(--die); display: grid; place-items: center;
   box-shadow: inset 0 0 0 0.5px rgba(0,0,0,.14), 0 1px 2px rgba(0,0,0,.12);
 }
-.pop-die svg { width: 80%; height: 80%; }
+.pop-die { color: var(--pip); }
+.pop-die svg { width: 100%; height: 100%; }
 .pop-die.off { opacity: .3; box-shadow: none; }
 .pop-eq { margin-left: 3px; font-size: 14px; font-weight: 700; font-family: var(--font-round); font-variant-numeric: tabular-nums; }
 .pop-rule { margin: 6px 0 0; font-size: 13px; line-height: 17px; letter-spacing: -0.08px; color: var(--label-2); }

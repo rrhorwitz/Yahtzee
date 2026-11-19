@@ -50,12 +50,15 @@
     arrowUp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
   };
 
-  const PIPS = { TL: [28, 28], TR: [72, 28], ML: [28, 50], C: [50, 50], MR: [72, 50], BL: [28, 72], BR: [72, 72] };
+  const PIPS = { TL: [25, 25], TR: [75, 25], ML: [25, 50], C: [50, 50], MR: [75, 50], BL: [25, 75], BR: [75, 75] };
   const FACE = { 1: ['C'], 2: ['TR', 'BL'], 3: ['TR', 'C', 'BL'], 4: ['TL', 'TR', 'BL', 'BR'], 5: ['TL', 'TR', 'C', 'BL', 'BR'], 6: ['TL', 'TR', 'ML', 'MR', 'BL', 'BR'] };
-  function pips(n, color, r) {
-    return FACE[n].map((k) => `<circle cx="${PIPS[k][0]}" cy="${PIPS[k][1]}" r="${r}" fill="${color}"/>`).join('');
+  // spread < 1 pulls pips toward the centre (small icon tiles); 1 = full real-dice layout
+  function pips(n, color, r, spread) {
+    const s = spread || 1;
+    const at = (v) => (50 + (v - 50) * s).toFixed(1);
+    return FACE[n].map((k) => `<circle cx="${at(PIPS[k][0])}" cy="${at(PIPS[k][1])}" r="${r}" fill="${color}"/>`).join('');
   }
-  const dieFace = (n) => `<svg viewBox="0 0 100 100">${pips(n, 'var(--pip)', 9)}</svg>`;
+  const dieFace = (n) => `<svg viewBox="0 0 100 100">${pips(n, 'currentColor', 10.5)}</svg>`;
 
   const LOWER_TILE = {
     threeKind: ['#FF9500', '3×'], fourKind: ['#FF3B30', '4×'], fullHouse: ['#34C759', 'FH'],
@@ -64,7 +67,7 @@
   function tile(cat) {
     const ui = S.UPPER.indexOf(cat);
     if (ui >= 0) {
-      return `<svg viewBox="0 0 100 100" width="28" height="28"><rect width="100" height="100" rx="23" fill="#007AFF"/>${pips(ui + 1, '#fff', 8.5)}</svg>`;
+      return `<svg viewBox="0 0 100 100" width="28" height="28"><rect width="100" height="100" rx="23" fill="#007AFF"/>${pips(ui + 1, '#fff', 8.5, 0.88)}</svg>`;
     }
     const [bg, txt] = LOWER_TILE[cat];
     return `<svg viewBox="0 0 100 100" width="28" height="28"><rect width="100" height="100" rx="23" fill="${bg}"/><text x="50" y="52" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,system-ui,sans-serif" font-weight="700" font-size="${txt.length > 1 ? 40 : 50}">${txt}</text></svg>`;
