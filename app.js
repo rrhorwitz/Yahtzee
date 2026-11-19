@@ -3,7 +3,7 @@
   'use strict';
 
   const S = window.Scoring;
-  const APP_VERSION = '32';
+  const APP_VERSION = '33';
   const COLORS = ['#007AFF', '#FF9500', '#34C759', '#FF2D55', '#AF52DE', '#5AC8FA', '#5856D6', '#FFCC00'];
   const KEYS = { settings: 'yahtzee.settings', game: 'yahtzee.game', undo: 'yahtzee.undo', history: 'yahtzee.history', last: 'yahtzee.lastPlayers' };
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -169,6 +169,8 @@
   }
 
   async function turnTransition(direction) {
+    if (roller) roller.stop();
+    rolling3d.clear();
     const target = targetAngle();
     if (target === norm(angle)) { render(); return; }
     const from = angle;
@@ -536,13 +538,25 @@
     infoOpen = key;
   }
 
-  /* A real 3D die: six faces (opposites add to 7) plus an inner core so the rounded
-     corners never show through. --fx/--fy turn the cube so `v` faces the player. */
-  const CUBE_TURN = { 1: [0, 0], 6: [0, 180], 3: [0, -90], 4: [0, 90], 2: [-90, 0], 5: [90, 0] };
-  function cube(v) {
-    const [fx, fy] = CUBE_TURN[v];
-    return `<span class="cube" style="--fx:${fx}deg;--fy:${fy}deg" aria-hidden="true">${[1, 2, 3, 4, 5, 6].map((n) => `<i class="core k${n}"></i>`).join('')}${[1, 2, 3, 4, 5, 6].map((n) => `<span class="face f${n}">${dieFace(n)}</span>`).join('')}</span>`;
+  /* Real 3D dice (WebGL, vendor/dice3d.js) for the roll; flat rounded dice at rest. */
+  const rolling3d = new Set();
+  let roller = null;
+  let rollerLoading = null;
+  function loadRoller() {
+    if (roller || rollerLoading) return rollerLoading || Promise.resolve(roller);
+    rollerLoading = new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/dice3d.js';
+      s.onload = () => {
+        try { roller = window.Dice3D && window.Dice3D.createDiceRoller(); } catch (e) { roller = null; }
+        resolve(roller);
+      };
+      s.onerror = () => resolve(null);
+      document.head.appendChild(s);
+    });
+    return rollerLoading;
   }
+  const rollTheme = () => (game && game.goldDice ? 'gold' : (DICE_THEMES.some((t) => t.id === settings.diceTheme) ? settings.diceTheme : 'classic'));
 
   const DICE_THEMES = [
     { id: 'classic', name: 'Classic' },
@@ -569,7 +583,7 @@
       const held = rolled && turn.held[i];
       // A div, not a <button>: Safari clips a button's contents to its box, which slices
       // the corners off the tumbling 3D cube.
-      return `<div class="die ${rolled ? '' : 'blank'} ${held ? 'held' : ''}" ${rolled ? 'role="button" tabindex="0"' : 'aria-disabled="true"'} aria-pressed="${held}" data-action="hold" data-i="${i}" aria-label="${rolled ? `Die ${i + 1}: ${v}${held ? ', held' : ''}` : 'Die not rolled'}">${rolled ? cube(v) : ''}</div>`;
+      return `<div class="die ${rolled ? '' : 'blank'} ${held ? 'held' : ''}${rolling3d.has(i) ? ' in-air' : ''}" ${rolled ? 'role="button" tabindex="0"' : 'aria-disabled="true"'} aria-pressed="${held}" data-action="hold" data-i="${i}" aria-label="${rolled ? `Die ${i + 1}: ${v}${held ? ', held' : ''}` : 'Die not rolled'}">${rolled ? `<span class="face2d">${dieFace(v)}</span>` : ''}</div>`;
     }).join('');
     const left = 3 - turn.rolls;
     return `<div class="tray theme-${DICE_THEMES.some((t) => t.id === settings.diceTheme) ? settings.diceTheme : 'classic'}${game.goldDice ? ' gold' : ''}" id="tray">
@@ -1281,21 +1295,46 @@
     if (reducedMotion.matches) return;
     const tray = main.querySelector('.tray');
     if (tray) tray.classList.toggle('slowmo', firstRollYahtzee);
-    // 3D roll: each cube starts several full turns away on random axes and spins down
-    // onto its result while hopping into the tray; dice land one after another.
+    play3dRoll(rollingIdx, firstRollYahtzee);
+  }
+
+  function play3dRoll(idx, slow) {
+    const tray = main.querySelector('.tray');
+    if (!tray || !idx.length) return;
+    const dur = (k) => 720 + k * 45 + Math.random() * 40;
+    if (!roller) {
+      loadRoller();
+      // 2D fallback (also used for the very first roll while the 3D engine loads)
+      const els = main.querySelectorAll('.die');
+      idx.forEach((i, k) => {
+        const el = els[i];
+        if (!el) return;
+        el.style.setProperty('--dur', (slow ? 2 : 1) * dur(k) + 'ms');
+        el.style.setProperty('--rz', (Math.random() < 0.5 ? -1 : 1) * (200 + Math.random() * 300) + 'deg');
+        el.classList.remove('tumble2d');
+        void el.offsetWidth;
+        el.classList.add('tumble2d');
+      });
+      return;
+    }
+    const M = 44; // canvas margin so lifted dice aren't clipped
+    const t = offsetIn(tray, stage);
+    const box = { x: t.x - M, y: t.y - M, w: tray.offsetWidth + M * 2, h: tray.offsetHeight + M * 2 };
     const els = main.querySelectorAll('.die');
-    // Start mid-tumble (not a whole number of turns) so the very first frame is already moving.
-    const turns = () => (Math.random() < 0.5 ? -1 : 1) * (360 * (1 + Math.floor(Math.random() * 2)) + 40 + Math.random() * 140);
-    rollingIdx.forEach((i, k) => {
+    const dice = idx.map((i) => {
       const el = els[i];
-      if (!el) return;
-      el.style.setProperty('--tx', turns() + 'deg');
-      el.style.setProperty('--ty', turns() + 'deg');
-      el.style.setProperty('--tz', (Math.random() - 0.5) * 120 + 'deg');
-      el.style.setProperty('--dur', 700 + k * 45 + Math.random() * 40 + 'ms'); // land one after another, no waiting
-      el.classList.remove('rolling');
-      void el.offsetWidth; // restart the animation
-      el.classList.add('rolling');
+      const o = offsetIn(el, stage);
+      return { x: o.x - box.x + el.offsetWidth / 2, y: o.y - box.y + el.offsetHeight / 2, size: el.offsetWidth, value: game.turn.dice[i], i };
+    });
+    rolling3d.clear(); // a new roll replaces any roll still in the air
+    idx.forEach((i) => rolling3d.add(i));
+    main.querySelectorAll('.die').forEach((el, i) => el.classList.toggle('in-air', rolling3d.has(i)));
+    const myRoll = {};
+    play3dRoll.current = myRoll;
+    roller.roll(stage, box, dice, { theme: rollTheme(), duration: dur, slow }).then(() => {
+      if (play3dRoll.current !== myRoll) return;
+      rolling3d.clear();
+      main.querySelectorAll('.die.in-air').forEach((el) => el.classList.remove('in-air'));
     });
   }
 
@@ -1514,6 +1553,7 @@
       save();
       if (game) { busy = true; turnTransition(-1).then(() => { busy = false; render(); }); }
     } else if (key === 'keepAwake') { syncWakeLock(); render(); }
+    else if (key === 'dice' && settings.dice) { loadRoller(); render(); }
     else if (key === 'sounds' && settings.sounds) { sfx('score'); render(); }
     else render();
   });
@@ -1530,6 +1570,7 @@
   /* ---------- Boot ---------- */
   if (game && (!game.players || !game.players.length)) game = null;
   applyTheme();
+  if (settings.dice) loadRoller();
   setAngleImmediately();
   render();
   if (!game) setTimeout(openNewGame, 350);

@@ -6,4 +6,5 @@ rm -rf www
 mkdir -p www/icons
 cp index.html styles.css scoring.js fx.js app.js native.js manifest.webmanifest www/
 cp icons/*.png icons/*.svg www/icons/
+mkdir -p www/vendor && cp vendor/dice3d.js www/vendor/
 echo "Built www/"
