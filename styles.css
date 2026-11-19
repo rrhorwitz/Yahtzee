@@ -705,7 +705,8 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
   background: rgba(0,0,0,.22); filter: blur(4px); z-index: -1; transition: transform .3s, opacity .3s;
 }
 .cube {
-  position: absolute; inset: 0; transform-style: preserve-3d;
+  position: absolute; inset: 0; transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
+  will-change: transform;
   transform: translateZ(-50cqi) rotateX(var(--fx)) rotateY(var(--fy));
 }
 .cube .face, .cube .core { position: absolute; inset: 0; }
@@ -731,9 +732,7 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 .cube .k4 { transform: rotateY(-90deg) translateZ(46cqi); }
 .cube .k2 { transform: rotateX(90deg) translateZ(46cqi); }
 .cube .k5 { transform: rotateX(-90deg) translateZ(46cqi); }
-/* side faces a touch darker while they're visible mid-roll */
-.cube .f2, .cube .f5 { filter: brightness(.94); }
-.cube .f3, .cube .f4 { filter: brightness(.9); }
+/* no filters inside the 3D cube: WebKit drops or flickers 3D faces that carry a filter */
 
 .die.held { background: transparent; }
 .die.held .face { background: color-mix(in srgb, var(--accent) 14%, #fff); color: var(--accent); }
@@ -750,20 +749,24 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
   0%   { transform: translateZ(-50cqi) rotateX(calc(var(--fx) + var(--tx))) rotateY(calc(var(--fy) + var(--ty))) rotateZ(var(--tz)); }
   100% { transform: translateZ(-50cqi) rotateX(var(--fx)) rotateY(var(--fy)) rotateZ(0deg); }
 }
+/* "lifting off the screen": the die starts big (close to you), drops onto the table,
+   then bounces up a little twice. Scale stands in for height above the screen. */
 @keyframes die-hop {
-  0%   { transform: translateY(-26px) scale(.9); }
-  38%  { transform: translateY(0) scale(1); }
-  55%  { transform: translateY(-7px); }
-  72%  { transform: translateY(0); }
-  84%  { transform: translateY(-2px); }
+  0%   { transform: scale(1.45); }
+  40%  { transform: scale(1); }
+  56%  { transform: scale(1.09); }
+  72%  { transform: scale(1); }
+  85%  { transform: scale(1.025); }
   100% { transform: none; }
 }
+/* shadow falls further away and softens the higher the die is */
 @keyframes shadow-hop {
-  0%   { transform: scale(.5); opacity: .3; }
-  38%  { transform: scale(1); opacity: 1; }
-  55%  { transform: scale(.8); opacity: .7; }
-  72%, 100% { transform: scale(1); opacity: 1; }
+  0%   { transform: translate(6%, 26%) scale(1.25); opacity: .25; }
+  40%  { transform: none; opacity: 1; }
+  56%  { transform: translate(2%, 8%) scale(1.08); opacity: .7; }
+  72%, 100% { transform: none; opacity: 1; }
 }
+.die.rolling { z-index: 2; }
 @media (prefers-reduced-motion: reduce) { .die.rolling, .die.rolling .cube, .die.rolling::after { animation: none; } }
 .die { position: relative; }
 /* The score screen never scrolls — not even programmatically (e.g. focus or 3D dice overhang). */
