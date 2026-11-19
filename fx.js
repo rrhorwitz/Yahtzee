@@ -271,7 +271,7 @@
       ctx.beginPath();
       ctx.arc(250, y + rowH / 2, 40, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#fff';
+      { const n = parseInt(p.color.slice(1), 16); const y = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)); ctx.fillStyle = y > 170 ? '#1C1C1E' : '#fff'; }
       ctx.font = `700 40px ${FONT}`;
       const m = /^player\s*(\d+)$/i.exec(String(p.name).trim());
       const ini = m ? `P${m[1]}` : (String(p.name).trim().charAt(0).toUpperCase() || '?');

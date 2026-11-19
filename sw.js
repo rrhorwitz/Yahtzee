@@ -1,5 +1,5 @@
 /* Offline support: cache the app shell, serve cache-first, refresh in background. */
-const CACHE = 'yahtzee-v12';
+const CACHE = 'yahtzee-v13';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'scoring.js', 'fx.js', 'app.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/favicon.svg', 'icons/favicon-32.png', 'icons/favicon-16.png', 'icons/icon-maskable-512.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
@@ -17,15 +17,16 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// Network-first: always run the latest version when online (so files never mix
+// versions after an update), and fall back to the cache when offline.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then((cached) => {
-      const network = fetch(e.request).then((res) => {
+    fetch(e.request, { cache: 'no-cache' })
+      .then((res) => {
         if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
         return res;
-      }).catch(() => cached);
-      return cached || network;
-    })
+      })
+      .catch(() => caches.match(e.request, { ignoreSearch: true }))
   );
 });

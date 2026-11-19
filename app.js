@@ -14,7 +14,7 @@
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
   };
 
-  let settings = Object.assign({ theme: 'system', autoRotate: true, dice: false, flip: 0, keepAwake: true, sounds: false, celebrate: true }, store.get(KEYS.settings, {}));
+  let settings = Object.assign({ theme: 'system', autoRotate: true, dice: false, flip: 0, keepAwake: true, sounds: false, celebrate: true, hint: false }, store.get(KEYS.settings, {}));
   let game = store.get(KEYS.game, null);
   let undoStack = store.get(KEYS.undo, []);
   let history = store.get(KEYS.history, []);
@@ -110,9 +110,25 @@
     save();
   }
 
-  function pushUndo() {
-    undoStack.push(JSON.stringify(game));
+  function historyPlayers() {
+    return game.players.map((p) => {
+      const t = S.totals(p);
+      return {
+        name: p.name, total: t.grandTotal, color: p.color,
+        yahtzees: (p.scores.yahtzee === 50 ? 1 : 0) + (p.bonusCount || 0),
+        upperBonus: t.upperBonus > 0,
+      };
+    });
+  }
+
+  function pushUndo(desc) {
+    undoStack.push(JSON.stringify({ g: game, d: desc || '' }));
     if (undoStack.length > 80) undoStack.shift();
+  }
+  /* Older saves stored the bare game; newer ones wrap it with a description. */
+  function readUndo(raw) {
+    const o = JSON.parse(raw);
+    return o && o.g ? { game: o.g, desc: o.d } : { game: o, desc: '' };
   }
 
   /* ---------- Theme ---------- */
@@ -214,14 +230,15 @@
     const me = cur();
     const diceLive = settings.dice && !game.finished && turn.rolls > 0;
     const allowed = diceLive ? S.allowedCategories(turn.dice, me.scores) : null;
+    const hintCat = diceLive && settings.hint ? suggestBox(allowed, turn.dice, me.scores) : null;
     const totals = players.map((p) => S.totals(p));
     const isCur = (i) => i === game.current && !game.finished;
     const colStyle = (i) => (isCur(i) ? ` style="--pc:${players[i].color}"` : '');
     const curCls = (i) => (isCur(i) ? ' cur' : '');
 
     let h = '<div class="c corner"></div>';
-    h += players.map((p, i) => `<div class="c head${curCls(i)}"${colStyle(i)} title="${esc(p.name)}" aria-label="${esc(p.name)}">
-      <span class="avatar${initialOf(p.name).length > 1 ? ' wide' : ''}" style="--chip-color:${p.color}">${esc(initialOf(p.name))}</span></div>`).join('');
+    h += players.map((p, i) => `<button class="c head${curCls(i)}"${colStyle(i)} data-action="rename" data-p="${i}" title="${esc(p.name)}" aria-label="${esc(p.name)}${isCur(i) ? ', current turn' : ''}. Rename">
+      <span class="avatar${initialOf(p.name).length > 1 ? ' wide' : ''}" style="--chip-color:${p.color};color:${textOn(p.color)}">${esc(initialOf(p.name))}</span></button>`).join('');
 
     const catRow = (cat, extra) => {
       let r = `<button class="c label${extra || ''}" data-action="info" data-cat="${cat}" aria-label="How ${S.LABELS[cat]} scores"><span class="tile">${tile(cat)}</span><span class="lbl"><span class="lbl-f">${S.LABELS[cat]}</span><span class="lbl-s">${SHORT[cat] || S.LABELS[cat]}</span></span></button>`;
@@ -239,14 +256,19 @@
           if (diceLive) {
             if (allowed.includes(cat)) {
               const s = S.scoreFor(cat, turn.dice, p.scores);
-              inner = `<span class="pv${s ? '' : ' z'}">${s}</span>`;
+              inner = `<span class="pv${s ? '' : ' z'}${cat === hintCat ? ' best' : ''}">${s}</span>`;
               act = true;
             } else cls.push('locked');
           } else { act = true; cls.push('open'); }
         }
+        const said = v !== null ? String(v)
+          : cls.includes('locked') ? 'not allowed this roll'
+          : diceLive && isCur(i) ? `would score ${S.scoreFor(cat, turn.dice, p.scores)}${cat === hintCat ? ', suggested' : ''}`
+          : isCur(i) ? 'open, tap to score' : 'open';
+        const aria = `${esc(p.name)}, ${S.LABELS[cat]}, ${said}${v !== null ? '. Press and hold to change' : ''}`;
         r += act
-          ? `<button class="${cls.join(' ')}"${colStyle(i)} data-action="score" data-cat="${cat}" aria-label="Score ${S.LABELS[cat]}">${inner}</button>`
-          : `<div class="${cls.join(' ')}"${colStyle(i)}${v !== null ? ` data-p="${i}" data-cat="${cat}"` : ''}>${inner}</div>`;
+          ? `<button class="${cls.join(' ')}"${colStyle(i)} data-action="score" data-cat="${cat}" aria-label="${aria}">${inner}</button>`
+          : `<div class="${cls.join(' ')}"${colStyle(i)}${v !== null ? ` data-p="${i}" data-cat="${cat}"` : ''} role="img" aria-label="${aria}">${inner}</div>`;
       });
       return r;
     };
@@ -256,8 +278,13 @@
     h += `<button class="c label sum" data-action="info" data-cat="upperBonus" aria-label="How the upper bonus works"><span class="lbl"><span class="lbl-f">Bonus <small>63+</small></span><span class="lbl-s">Bonus</span></span></button>`;
     h += players.map((p, i) => {
       const t = totals[i];
-      return `<div class="c val sum${curCls(i)}${t.upperBonus ? ' earned' : ''}"${colStyle(i)}>${t.upperBonus
-        ? `+${t.upperBonus}` : `<span class="frac">${t.upperSum}<small>/63</small></span>`}</div>`;
+      if (t.upperBonus) return `<div class="c val sum${curCls(i)} earned"${colStyle(i)} aria-label="${esc(p.name)}, upper bonus earned">+${t.upperBonus}</div>`;
+      const pace = upperPace(p);
+      const paceHtml = pace.filled && !pace.missed
+        ? `<span class="pace ${pace.diff >= 0 ? 'up' : 'down'}">${pace.diff > 0 ? '+' : pace.diff < 0 ? '−' : '±'}${Math.abs(pace.diff)}</span>` : '';
+      const aria = pace.missed ? 'bonus out of reach' : pace.filled ? `${Math.abs(pace.diff)} ${pace.diff >= 0 ? 'ahead of' : 'behind'} bonus pace` : 'no upper scores yet';
+      return `<div class="c val sum pacecell${curCls(i)}${pace.missed ? ' missed' : ''}"${colStyle(i)} aria-label="${esc(p.name)}, upper ${t.upperSum} of 63, ${aria}">
+        <span class="frac">${t.upperSum}<small>/63</small></span>${paceHtml}</div>`;
     }).join('');
 
     S.LOWER.forEach((c, k) => { h += catRow(c, k === 0 ? ' sec' : ''); });
@@ -272,15 +299,86 @@
 
     h += `<div class="c label total"><span class="lbl">Total</span></div>`;
     const best = Math.max(...totals.map((t) => t.grandTotal));
-    h += players.map((p, i) => `<div class="c val total${curCls(i)}${game.finished && n > 1 && totals[i].grandTotal === best ? ' winner' : ''}"${colStyle(i)}>${totals[i].grandTotal}</div>`).join('');
+    h += players.map((p, i) => `<div class="c val total${curCls(i)}${game.finished && n > 1 && totals[i].grandTotal === best ? ' winner' : ''}"${colStyle(i)} aria-label="${esc(p.name)}, total ${totals[i].grandTotal}">${totals[i].grandTotal}</div>`).join('');
 
     main.innerHTML = (settings.dice && !game.finished ? renderTray() : '')
       + `<div class="board" style="--cols:${n}">${h}</div>`;
     infoOpen = null;
     fitBoard();
+    animateTotals();
+  }
+
+  /* Totals tick up (or down) to their new value. The animation survives re-renders
+     (e.g. mid-flip) because each frame looks up the current cell. */
+  let shownTotals = null;
+  const totalAnims = {};
+  function animateTotals() {
+    const now = game.players.map((p) => S.totals(p).grandTotal);
+    const prev = shownTotals && shownTotals.id === game.id && shownTotals.v.length === now.length ? shownTotals.v : null;
+    shownTotals = { id: game.id, v: now };
+    const cells = main.querySelectorAll('.c.val.total');
+    now.forEach((v, i) => {
+      const a = totalAnims[i];
+      if (a && a.to === v) { if (cells[i]) cells[i].textContent = String(a.current); return; } // keep running
+      if (!prev || prev[i] === v || reducedMotion.matches) { delete totalAnims[i]; return; }
+      const from = a ? a.current : prev[i];
+      const anim = { from, to: v, current: from, t0: performance.now(), dur: Math.min(900, 380 + Math.abs(v - from) * 5) };
+      totalAnims[i] = anim;
+      if (cells[i]) cells[i].textContent = String(from);
+      const step = (t) => {
+        if (totalAnims[i] !== anim) return;
+        const k = Math.min(1, (t - anim.t0) / anim.dur);
+        anim.current = Math.round(anim.from + (anim.to - anim.from) * (1 - Math.pow(1 - k, 3)));
+        const el = main.querySelectorAll('.c.val.total')[i];
+        if (el) { el.textContent = String(anim.current); el.classList.toggle('counting', k < 1); }
+        if (k < 1) requestAnimationFrame(step); else delete totalAnims[i];
+      };
+      requestAnimationFrame(step);
+    });
   }
 
   const SHORT = { threeKind: '3 Kind', fourKind: '4 Kind', fullHouse: 'F. House', smallStraight: 'Sm. Str.', largeStraight: 'Lg. Str.' };
+
+  /* Readable text on a player colour (dark text on light colours like yellow/teal). */
+  function textOn(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+    return L > 0.45 ? '#1C1C1E' : '#FFFFFF'; // only very light colours (yellow, light blue) get dark text
+  }
+
+  /* Best-move hint: compare each legal box's score with what that box typically
+     earns over a game, nudged for upper-bonus pace and keeping Chance in reserve. */
+  const TYPICAL = { ones: 2.1, twos: 5.3, threes: 8.6, fours: 12.2, fives: 15.7, sixes: 19.2, threeKind: 15.2, fourKind: 5.6, fullHouse: 9.2, smallStraight: 12.2, largeStraight: 10.4, yahtzee: 2.3, chance: 22 };
+  function suggestBox(allowed, dice, scores) {
+    const filled = S.ALL.filter((c) => scores[c] !== null).length;
+    let bestCat = null;
+    let bestV = -Infinity;
+    allowed.forEach((c) => {
+      const s = S.scoreFor(c, dice, scores);
+      let v = s - TYPICAL[c];
+      const ui = S.UPPER.indexOf(c);
+      if (ui >= 0 && s > 0) v += (s - 3 * (ui + 1)) * 0.8 + (s >= 3 * (ui + 1) ? 3 : 0);
+      if (c === 'chance' && filled < 10) v -= 4;
+      if (c === 'yahtzee' && s === 50) v += 100;
+      if (v > bestV) { bestV = v; bestCat = c; }
+    });
+    return bestCat;
+  }
+
+  /* Upper-bonus pace: compare against par (three of each number filled so far). */
+  function upperPace(p) {
+    let par = 0;
+    let sum = 0;
+    let maxLeft = 0;
+    let filled = 0;
+    S.UPPER.forEach((c, k) => {
+      const face = k + 1;
+      if (p.scores[c] === null) maxLeft += face * 5;
+      else { filled++; par += face * 3; sum += p.scores[c]; }
+    });
+    return { filled, diff: sum - par, missed: sum + maxLeft < S.UPPER_BONUS_THRESHOLD };
+  }
 
   /* Switch to initials / hide icons when columns get tight. */
   function fitBoard() {
@@ -311,10 +409,24 @@
     largeStraight: { dice: [2, 3, 4, 5, 6], on: [1, 1, 1, 1, 1], rule: 'Five numbers in a row.', eq: '40', fixed: 40 },
     yahtzee: { dice: [6, 6, 6, 6, 6], on: [1, 1, 1, 1, 1], rule: 'All five dice the same.', eq: '50', fixed: 50 },
     chance: { dice: [1, 3, 4, 5, 6], on: [1, 1, 1, 1, 1], rule: 'Any roll at all. Score the total of all five dice.', eq: '19' },
-    upperBonus: { title: 'Upper Bonus', rule: 'Score 63 or more across Aces through Sixes. That’s three of each number.', fixed: 35, plus: true },
+    upperBonus: { title: 'Upper Bonus', rule: 'Score 63 or more across Aces through Sixes — three of each number. The small +/− shows how far ahead or behind that pace you are.', fixed: 35, plus: true },
     yahtzeeBonus: { title: 'Yahtzee Bonus', rule: 'Each extra Yahtzee after scoring 50 in the Yahtzee box. You still fill another box with it (Joker rules).', fixed: 100, plus: true },
   };
   let infoOpen = null;
+
+  /* Position in the stage's own (unrotated) coordinates so it works when flipped. */
+  function placePop(pop, anchor, pointX) {
+    const top = anchor.offsetTop;
+    const h = anchor.offsetHeight;
+    const pw = pop.offsetWidth;
+    const ph = pop.offsetHeight;
+    const left = Math.max(8, Math.min(pointX - 22, main.clientWidth - pw - 8));
+    const below = top + h + ph + 10 <= main.clientHeight;
+    pop.style.left = left + 'px';
+    pop.style.top = (below ? top + h + 6 : top - ph - 6) + 'px';
+    pop.classList.add(below ? 'below' : 'above');
+    pop.style.setProperty('--ax', Math.min(Math.max(pointX - left, 18), pw - 18) + 'px');
+  }
 
   function closeInfo() {
     const pop = main.querySelector('.pop');
@@ -342,18 +454,7 @@
       ${dice}<p class="pop-rule">${d.rule}</p><i class="pop-arrow"></i>`;
     main.appendChild(pop);
 
-    // Position in the stage's own (unrotated) coordinates so it works when flipped.
-    const top = anchor.offsetTop;
-    const h = anchor.offsetHeight;
-    const pw = pop.offsetWidth;
-    const ph = pop.offsetHeight;
-    const left = Math.max(8, Math.min(anchor.offsetLeft + 6, main.clientWidth - pw - 8));
-    const below = top + h + ph + 10 <= main.clientHeight;
-    pop.style.left = left + 'px';
-    pop.style.top = (below ? top + h + 6 : top - ph - 6) + 'px';
-    pop.classList.add(below ? 'below' : 'above');
-    const arrowX = Math.min(Math.max(anchor.offsetLeft + 28 - left, 18), pw - 18);
-    pop.style.setProperty('--ax', arrowX + 'px');
+    placePop(pop, anchor, anchor.offsetLeft + 28);
     anchor.classList.add('pressed');
     pop._anchor = anchor;
     requestAnimationFrame(() => pop.classList.add('show'));
@@ -467,17 +568,76 @@
     const p = game.players[pi];
     closeSheet();
     if (p.scores[cat] === v) return;
-    pushUndo();
+    pushUndo(`${esc(p.name)}'s ${S.LABELS[cat]} change`);
     const before = S.totals(p).upperBonus;
     p.scores[cat] = v;
     if (game.finished) {
       const rec = history.find((g) => g.id === game.id);
-      if (rec) rec.players = game.players.map((x) => ({ name: x.name, total: S.totals(x).grandTotal, color: x.color }));
+      if (rec) rec.players = historyPlayers();
     }
     save();
     render();
     toast(`${esc(p.name)}'s ${S.LABELS[cat]} changed to ${v}`);
     if (!before && S.totals(p).upperBonus) celebrate('small');
+  }
+
+  /* Rename players (any time during a game) */
+  function openRename(focusIdx) {
+    const body = `<div class="group">${game.players.map((p, i) => `<div class="row player-row">
+        <span class="avatar${initialOf(p.name).length > 1 ? ' wide' : ''}" style="--chip-color:${p.color};color:${textOn(p.color)}">${esc(initialOf(p.name))}</span>
+        <input data-rn="${i}" value="${/^player\s*\d+$/i.test(p.name) ? '' : esc(p.name)}" placeholder="Player ${i + 1}" maxlength="18" autocomplete="off" enterkeyhint="done" aria-label="Name for player ${i + 1}">
+      </div>`).join('')}</div>
+      <p class="section-footer">Leave a name blank to use “Player 1”, “Player 2”…</p>`;
+    openSheet({
+      title: 'Players',
+      left: '<button class="text-btn" data-action="close-sheet">Cancel</button>',
+      right: '<button class="text-btn bold" data-action="rename-save">Save</button>',
+      body,
+    });
+    if (focusIdx !== null) setTimeout(() => { const el = sheet.querySelector(`input[data-rn="${focusIdx}"]`); if (el) el.focus(); }, 350);
+  }
+  function saveRename() {
+    sheet.querySelectorAll('input[data-rn]').forEach((inp) => {
+      const i = +inp.dataset.rn;
+      game.players[i].name = inp.value.trim() || `Player ${i + 1}`;
+    });
+    store.set(KEYS.last, game.players.map((p) => ({ name: p.name, seat: p.seat })));
+    save();
+    closeSheet();
+    render();
+  }
+
+  /* One-time tips */
+  const tips = Object.assign({ info: false, edit: false }, store.get('yahtzee.tips', {}));
+  let tipEl = null;
+  function dismissTip() {
+    if (!tipEl) return;
+    const t = tipEl;
+    tipEl = null;
+    t.classList.remove('show');
+    setTimeout(() => t.remove(), 180);
+  }
+  function showTip(key, anchor, text) {
+    if (tips[key] || !anchor || tipEl || layer.classList.contains('open')) return;
+    tips[key] = true;
+    store.set('yahtzee.tips', tips);
+    const pop = document.createElement('div');
+    pop.className = 'pop tip';
+    pop.setAttribute('role', 'status');
+    pop.innerHTML = `<p class="pop-rule">${text}</p><i class="pop-arrow"></i>`;
+    main.appendChild(pop);
+    placePop(pop, anchor, anchor.offsetLeft + Math.min(28, anchor.offsetWidth / 2));
+    tipEl = pop;
+    requestAnimationFrame(() => pop.classList.add('show'));
+    setTimeout(() => { if (tipEl === pop) dismissTip(); }, 6000);
+  }
+  function maybeTips(lastScored) {
+    if (!game || game.finished || busy) return;
+    if (!tips.info) {
+      setTimeout(() => showTip('info', main.querySelector('.c.label[data-cat="fullHouse"]'), 'Tip: tap a category name to see how it scores.'), 600);
+    } else if (!tips.edit && lastScored) {
+      setTimeout(() => showTip('edit', main.querySelector(`.c.filled[data-p="${lastScored.p}"][data-cat="${lastScored.cat}"]`), 'Tip: press and hold a score to change it.'), 300);
+    }
   }
 
   /* Yahtzee bonus stepper */
@@ -500,7 +660,7 @@
       body: draw(),
       step(d) { count = Math.max(0, count + d); if (!canAdd && d > 0) count -= d; refreshSheetBody(draw()); },
       saveBonus() {
-        if (count !== (p.bonusCount || 0)) { pushUndo(); p.bonusCount = count; save(); render(); }
+        if (count !== (p.bonusCount || 0)) { pushUndo(`${esc(p.name)}'s Yahtzee bonus`); p.bonusCount = count; save(); render(); }
         closeSheet();
       },
     });
@@ -515,7 +675,7 @@
       <div class="group">
         ${draft.map((p, i) => `<div class="row player-row">
           ${draft.length > 1 ? `<button class="remove-btn" data-action="np-remove" data-i="${i}" aria-label="Remove player">${ICON.minus}</button>` : ''}
-          <span class="avatar" style="--chip-color:${COLORS[i % COLORS.length]}">${i + 1}</span>
+          <span class="avatar" style="--chip-color:${COLORS[i % COLORS.length]};color:${textOn(COLORS[i % COLORS.length])}">${i + 1}</span>
           <input data-np="${i}" value="${esc(p.name)}" placeholder="Player ${i + 1}" maxlength="18" autocomplete="off" enterkeyhint="done">
           <button class="seat-btn ${p.seat ? 'far' : ''}" data-action="np-seat" data-i="${i}" aria-label="Seat side">${ICON.arrowUp}${p.seat ? 'Far side' : 'Near side'}</button>
         </div>`).join('')}
@@ -549,10 +709,12 @@
         ${sw('keepAwake', 'Keep Screen On', 'Stop the screen dimming during a game')}
         ${sw('celebrate', 'Celebrations', 'Confetti for Yahtzees, bonuses and wins')}
         ${sw('sounds', 'Sounds', 'Dice rolls and scoring chimes')}
+        ${sw('hint', 'Best-Move Hint', 'Star the strongest box for your roll (dice roller)')}
       </div>
       <div class="section-header"><span>Game</span></div>
       <div class="group">
         <button class="row" data-action="new-game"><span class="row-body" style="color:var(--accent)">New Game…</span></button>
+        ${game && !game.finished ? '<button class="row" data-action="rename"><span class="row-body">Rename Players…</span>' + ICON.chev + '</button>' : ''}
         <button class="row" data-action="history"><span class="row-body">Scores &amp; History</span><span class="row-value empty">${history.length || ''}</span>${ICON.chev}</button>
       </div>
       <p class="section-footer">Tap a category name to see how it scores. Press and hold any score to change it.</p>
@@ -561,6 +723,48 @@
   function openSettings() { openSheet({ title: 'Settings', body: settingsBody(), name: 'settings' }); }
 
   /* History */
+  /* Per-player stats across all finished games (real names only; "Player 2" is skipped). */
+  function playerStats() {
+    const by = new Map();
+    history.forEach((g) => {
+      const top = Math.max(...g.players.map((p) => p.total));
+      const multi = g.players.length > 1;
+      g.players.forEach((p) => {
+        const name = String(p.name).trim();
+        if (!name || /^player\s*\d+$/i.test(name)) return;
+        const key = name.toLowerCase();
+        const s = by.get(key) || { name, color: p.color, games: 0, wins: 0, multi: 0, sum: 0, best: 0, yahtzees: 0, bonuses: 0, tracked: 0 };
+        s.games++;
+        s.sum += p.total;
+        s.best = Math.max(s.best, p.total);
+        if (multi) { s.multi++; if (p.total === top) s.wins++; }
+        if (p.yahtzees !== undefined) { s.tracked++; s.yahtzees += p.yahtzees; if (p.upperBonus) s.bonuses++; }
+        s.color = p.color;
+        by.set(key, s);
+      });
+    });
+    return [...by.values()].sort((a, b) => b.wins - a.wins || b.sum / b.games - a.sum / a.games);
+  }
+  function statsHtml() {
+    const stats = playerStats();
+    if (!stats.length) return '';
+    return `<div class="section-header"><span>Players</span></div>
+      <div class="group">${stats.map((s) => {
+        const avg = Math.round(s.sum / s.games);
+        const bits = [`${s.games} game${s.games === 1 ? '' : 's'}`];
+        if (s.multi) bits.push(`${s.wins} win${s.wins === 1 ? '' : 's'}`);
+        bits.push(`best ${s.best}`);
+        if (s.tracked) bits.push(`${s.yahtzees} Yahtzee${s.yahtzees === 1 ? '' : 's'}`);
+        if (s.tracked) bits.push(`bonus ${Math.round((s.bonuses / s.tracked) * 100)}%`);
+        return `<div class="row stat-row" aria-label="${esc(s.name)}: ${bits.join(', ')}, average ${avg}">
+          <span class="avatar${initialOf(s.name).length > 1 ? ' wide' : ''}" style="--chip-color:${s.color};color:${textOn(s.color)}">${esc(initialOf(s.name))}</span>
+          <span class="row-body"><span class="row-title">${esc(s.name)}</span><span class="row-sub">${bits.join(' · ')}</span></span>
+          <span class="row-value"><span class="stat-avg">${avg}</span><small>avg</small></span>
+        </div>`;
+      }).join('')}</div>
+      <p class="section-footer">Stats are grouped by name. Yahtzee and bonus counts start from games played after this update.</p>`;
+  }
+
   function historyBody() {
     if (!history.length) return '<p class="sheet-lede" style="margin-top:30px">No finished games yet.</p>';
     const scores = [];
@@ -568,7 +772,7 @@
     scores.sort((a, b) => b.total - a.total);
     const fmt = (d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
     const medal = (i) => ['gold', 'silver', 'bronze'][i] || '';
-    return `
+    return `${statsHtml()}
       <div class="section-header"><span>High Scores</span></div>
       <div class="group">${scores.slice(0, 10).map((s, i) => `<div class="row">
         <span class="rank ${medal(i)}">${i + 1}</span>
@@ -608,7 +812,7 @@
       const behind = top.total - r.total;
       const label = place === 1 ? (tied ? 'Tied for 1st' : 'Winner') : `${tied ? 'Tied ' : ''}${ord(place)} · ${behind} behind`;
       return `<div class="row standing${place === 1 ? ' first' : ''}">
-        <span class="avatar${initialOf(r.p.name).length > 1 ? ' wide' : ''}" style="--chip-color:${r.p.color}">${esc(initialOf(r.p.name))}</span>
+        <span class="avatar${initialOf(r.p.name).length > 1 ? ' wide' : ''}" style="--chip-color:${r.p.color};color:${textOn(r.p.color)}">${esc(initialOf(r.p.name))}</span>
         <span class="row-body"><span class="row-title">${esc(r.p.name)}</span><span class="row-sub">${label}</span></span>
         <span class="row-value">${r.total}</span>
       </div>`;
@@ -707,7 +911,7 @@
     if (p.scores[cat] !== null) return;
     busy = true;
     closeSheet();
-    pushUndo();
+    pushUndo(`${esc(p.name)}'s ${value} in ${S.LABELS[cat]}`);
     let bonus = false;
     if (settings.dice && game.turn.rolls > 0 && S.earnsYahtzeeBonus(game.turn.dice, p.scores)) {
       p.bonusCount = (p.bonusCount || 0) + 1;
@@ -732,22 +936,20 @@
       busy = false;
       return;
     }
+    const scorer = game.current;
     game.current = (game.current + 1) % game.players.length;
     game.turn = freshTurn();
     save();
     await turnTransition(1);
     busy = false;
     render();
+    maybeTips({ p: scorer, cat });
   }
 
   function finishGame() {
     game.finished = true;
     history = history.filter((g) => g.id !== game.id);
-    history.unshift({
-      id: game.id,
-      date: Date.now(),
-      players: game.players.map((p) => ({ name: p.name, total: S.totals(p).grandTotal, color: p.color })),
-    });
+    history.unshift({ id: game.id, date: Date.now(), players: historyPlayers() });
     history = history.slice(0, 200);
     save();
     turnTransition(1).then(() => { openResults(); celebrate('win'); });
@@ -757,7 +959,7 @@
     if (busy || !undoStack.length) return;
     busy = true;
     closeSheet();
-    const prev = JSON.parse(undoStack.pop());
+    const { game: prev, desc } = readUndo(undoStack.pop());
     if (game.finished && !prev.finished) history = history.filter((g) => g.id !== game.id);
     const changedPlayer = prev.current !== game.current || prev.finished !== game.finished;
     game = prev;
@@ -765,7 +967,7 @@
     if (changedPlayer) await turnTransition(-1); else render();
     busy = false;
     render();
-    toast('Undone');
+    toast(desc ? `Undid ${desc}` : 'Undone', 1800);
   }
 
   function roll() {
@@ -825,6 +1027,8 @@
     switch (a) {
       case 'close-sheet': closeSheet(); break;
       case 'info': openInfo(el.dataset.cat, el); break;
+      case 'rename': if (!busy && game) openRename(el.dataset.p === undefined ? null : +el.dataset.p); break;
+      case 'rename-save': saveRename(); break;
       case 'settings': openSettings(); break;
       case 'history': openHistory(sheetState && sheetState.name === 'settings'); break;
       case 'new-game': openNewGame(); break;
@@ -887,6 +1091,7 @@
         turnTransition(1).then(() => {
           busy = false;
           render();
+          maybeTips(null);
         });
         break;
       }
@@ -903,6 +1108,7 @@
   /* ---------- Events ---------- */
   stage.addEventListener('click', (e) => {
     if (pressFired) { pressFired = false; e.preventDefault(); return; }
+    if (tipEl) dismissTip();
     if (!wakeLock) syncWakeLock();
     const el = e.target.closest('[data-action]');
     if (infoOpen && !(el && el.dataset.action === 'info') && !e.target.closest('.pop')) {
