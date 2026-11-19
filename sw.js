@@ -1,5 +1,5 @@
 /* Offline support: cache the app shell, serve cache-first, refresh in background. */
-const CACHE = 'yahtzee-v41';
+const CACHE = 'yahtzee-v42';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'scoring.js', 'native.js', 'fx.js', 'app.js', 'vendor/dice3d.js', 'sounds/bonus.m4a', 'sounds/hold.m4a', 'sounds/roll1-0.m4a', 'sounds/roll1-1.m4a', 'sounds/roll1-2.m4a', 'sounds/roll2-0.m4a', 'sounds/roll2-1.m4a', 'sounds/roll2-2.m4a', 'sounds/roll3-0.m4a', 'sounds/roll3-1.m4a', 'sounds/roll3-2.m4a', 'sounds/roll4-0.m4a', 'sounds/roll4-1.m4a', 'sounds/roll4-2.m4a', 'sounds/roll5-0.m4a', 'sounds/roll5-1.m4a', 'sounds/roll5-2.m4a', 'sounds/score.m4a', 'sounds/silent.m4a', 'sounds/upper.m4a', 'sounds/win.m4a', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/favicon.svg', 'icons/favicon-32.png', 'icons/favicon-16.png', 'icons/icon-maskable-512.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',

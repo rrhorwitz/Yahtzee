@@ -236,33 +236,45 @@
      The SOUNDS synthesizers above are only used to render those files (npm run build:sounds).
      Plain <audio> playback is what iOS Safari and home-screen apps handle most reliably. */
   const VARIANTS = { roll1: 3, roll2: 3, roll3: 3, roll4: 3, roll5: 3 };
-  const pool = [];
-  for (let k = 0; k < 6; k++) { const el = new Audio(); el.preload = 'auto'; pool.push(el); }
+  const FILES = ['hold', 'score', 'upper', 'bonus', 'win'];
+  Object.keys(VARIANTS).forEach((k) => { for (let v = 0; v < VARIANTS[k]; v++) FILES.push(`${k}-${v}`); });
+  // One preloaded player per sound (two for the ones that can overlap), so a tap only
+  // restarts audio that is already decoded instead of loading a file.
+  const players = {};
+  FILES.forEach((n) => {
+    const count = n === 'hold' || n === 'score' ? 2 : 1;
+    players[n] = [];
+    for (let k = 0; k < count; k++) { const el = new Audio(`sounds/${n}.m4a`); el.preload = 'auto'; el.load(); players[n].push(el); }
+  });
   let poolUnlocked = false;
   let lastError = '';
-  // iOS lets an <audio> element play later (outside a tap) only once it has played inside one.
+  // iOS only lets an <audio> element play outside a tap once it has played inside one:
+  // on the first tap, start every player muted and stop it straight away.
   function unlockPool() {
     if (poolUnlocked) return;
     poolUnlocked = true;
-    pool.forEach((el) => {
-      el.src = 'sounds/silent.m4a';
+    Object.values(players).flat().forEach((el) => {
+      el.muted = true;
       const pr = el.play();
-      if (pr && pr.then) pr.then(() => el.pause()).catch((e) => { poolUnlocked = false; lastError = e && e.name; });
+      const done = () => { el.pause(); el.currentTime = 0; el.muted = false; };
+      if (pr && pr.then) pr.then(done).catch((e) => { el.muted = false; poolUnlocked = false; lastError = e && e.name; });
+      else done();
     });
   }
-  function fileFor(name, arg) {
+  function keyFor(name, arg) {
     if (name === 'roll') {
-      const key = `roll${Math.max(1, Math.min(5, arg || 5))}`;
-      return `sounds/${key}-${Math.floor(Math.random() * VARIANTS[key])}.m4a`;
+      const k = `roll${Math.max(1, Math.min(5, arg || 5))}`;
+      return `${k}-${Math.floor(Math.random() * VARIANTS[k])}`;
     }
-    return `sounds/${name}.m4a`;
+    return name;
   }
   function sound(name, arg) {
-    if (!SOUNDS[name]) return Promise.resolve(false);
-    const el = pool.find((x) => x.paused || x.ended) || pool[0];
+    const list = players[keyFor(name, arg)];
+    if (!list) return Promise.resolve(false);
+    const el = list.find((x) => x.paused || x.ended) || list[0];
     try {
-      el.pause();
-      el.src = fileFor(name, arg);
+      el.muted = false;
+      if (!el.paused) el.pause();
       el.currentTime = 0;
       const pr = el.play();
       if (pr && pr.then) return pr.then(() => { lastError = ''; return true; }).catch((e) => { lastError = `${e.name}: ${e.message}`; return false; });
