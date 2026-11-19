@@ -3,7 +3,7 @@
   'use strict';
 
   const S = window.Scoring;
-  const APP_VERSION = '38';
+  const APP_VERSION = '39';
   const COLORS = ['#007AFF', '#FF9500', '#34C759', '#FF2D55', '#AF52DE', '#5AC8FA', '#5856D6', '#FFCC00'];
   const KEYS = { settings: 'yahtzee.settings', game: 'yahtzee.game', undo: 'yahtzee.undo', history: 'yahtzee.history', last: 'yahtzee.lastPlayers' };
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -624,7 +624,7 @@
   /* ---------- Sheets ---------- */
   function openSheet(opts) {
     sheetState = opts;
-    sheet.className = 'sheet' + (opts.compact ? ' compact' : '');
+    sheet.className = 'sheet' + (opts.compact ? ' compact' : '') + (opts.split ? ' split-sheet' : '');
     sheet.innerHTML = `<div class="grabber"></div>
       <div class="sheet-head">
         <div class="left">${opts.left || ''}</div>
@@ -1091,7 +1091,57 @@
         ${NATIVE.gameCenter.available ? '<button class="btn tinted block" data-action="gc-post">Post to Game Center</button>' : ''}
         <button class="text-btn" data-action="new-game">New Players</button>
       </div>`;
+    const near = ranked.filter((r) => !(r.p.seat || 0));
+    const far = ranked.filter((r) => (r.p.seat || 0));
+    if (!solo && near.length && far.length) { openSplitResults(ranked, rows, sub, tie, top); return; }
     openSheet({ title: 'Game Over', body });
+  }
+
+  /* Split results: the bottom half faces the near side of the table, the top half (upside
+     down) faces the far side. Each half speaks to whoever sits there. */
+  function openSplitResults(ranked, rows, sub, tie, top) {
+    const ord = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) ? 0 : (n % 10 < 4 ? n % 10 : 0)] || 'th');
+    const placeOf = (r) => ranked.findIndex((x) => x.total === r.total) + 1;
+    const MEDAL = ['🏆', '🥈', '🥉'];
+    const hand = () => `<div class="handshake" aria-hidden="true">${ranked.filter((r) => r.total === top.total).slice(0, 4).map((r, k, arr) => `<span class="avatar hs${k < arr.length / 2 ? ' l' : ' r'}" style="--chip-color:${r.p.color};color:${textOn(r.p.color)}">${esc(initialOf(r.p.name))}</span>`).join('')}<i class="spark s1">✦</i><i class="spark s2">✦</i><i class="spark s3">✦</i></div>`;
+    const half = (side, extra) => {
+      let icon;
+      let head;
+      let line;
+      if (side.length === 1) {
+        const me = side[0];
+        const place = placeOf(me);
+        const n = esc(me.p.name);
+        if (place === 1 && tie) { icon = hand(); head = `You tied for 1st, ${n}!`; line = `${me.total} points each`; }
+        else if (place === 1) { icon = `<div class="trophy">🏆</div>`; head = `You win, ${n}!`; line = sub; }
+        else {
+          icon = `<div class="trophy">${MEDAL[place - 1] || '🎲'}</div>`;
+          head = tie ? "It's a tie for 1st!" : `${esc(top.p.name)} wins!`;
+          line = `You came ${ord(place)}, ${n} · ${me.total} points`;
+        }
+      } else {
+        icon = tie ? hand() : `<div class="trophy">🏆</div>`;
+        head = tie ? "It's a tie!" : `${esc(top.p.name)} wins!`;
+        line = sub;
+      }
+      return `<div class="podium"><span class="podium-icon">${icon}</span><h2>${head}</h2><p>${line}</p></div>
+        <div class="group standings">${rows}</div>${extra || ''}`;
+    };
+    const far = ranked.filter((r) => (r.p.seat || 0));
+    const near = ranked.filter((r) => !(r.p.seat || 0));
+    const buttons = `<div class="actions">
+        <div class="split-btns"><button class="btn" data-action="rematch">Play Again</button><button class="btn tinted" data-action="share">${ICON.share} Share</button></div>
+        ${NATIVE.gameCenter.available ? '<button class="btn tinted block" data-action="gc-post">Post to Game Center</button>' : ''}
+        <div class="split-links"><button class="text-btn" data-action="new-game">New Players</button><button class="text-btn bold" data-action="close-sheet">Done</button></div>
+      </div>`;
+    openSheet({
+      split: true,
+      body: `<div class="split-results${ranked.length > 3 ? ' many' : ''}">
+        <section class="split-half far">${half(far)}</section>
+        <div class="split-divider"><span>Game over</span></div>
+        <section class="split-half near">${half(near, buttons)}</section>
+      </div>`,
+    });
   }
   /* Game Center is one account per phone, so ask which player is the phone's owner. */
   function openGameCenterPost() {
@@ -1283,7 +1333,8 @@
     const tot = game.players.map((p) => S.totals(p).grandTotal);
     const best = Math.max(...tot);
     const winners = game.players.filter((p, i) => tot[i] === best);
-    const faceWinner = settings.autoRotate && game.players.length > 1 && winners.length === 1;
+    const bothSides = game.players.some((p) => p.seat) && game.players.some((p) => !p.seat);
+    const faceWinner = settings.autoRotate && game.players.length > 1 && winners.length === 1 && !bothSides;
     if (faceWinner) faceSeat = winners[0].seat || 0;
     const myGame = game.id;
     turnTransition(1).then(() => {
