@@ -82,23 +82,65 @@
     if (ac.state === 'suspended') ac.resume();
     return ac;
   }
-  let noiseBuf = null;
-  function knock(a, t, freq, gain) {
-    if (!noiseBuf) {
-      noiseBuf = a.createBuffer(1, a.sampleRate * 0.05, a.sampleRate);
-      const d = noiseBuf.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+  /* Wooden dice: each impact is a few fast-decaying resonant modes (the hard die)
+     plus a short click and, for harder hits, a low "bowl" body resonance. */
+  let clickBuf = null;
+  function clickNoise(a) {
+    if (!clickBuf) {
+      clickBuf = a.createBuffer(1, Math.floor(a.sampleRate * 0.012), a.sampleRate);
+      const d = clickBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 4);
     }
-    const src = a.createBufferSource();
-    src.buffer = noiseBuf;
-    const bp = a.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = freq;
-    bp.Q.value = 2.5;
+    return clickBuf;
+  }
+  function mode(a, out, t, freq, decay, gain) {
+    const o = a.createOscillator();
     const g = a.createGain();
-    g.gain.value = gain;
-    src.connect(bp).connect(g).connect(a.destination);
+    o.type = 'sine';
+    o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.0015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+    o.connect(g).connect(out);
+    o.start(t);
+    o.stop(t + decay + 0.01);
+  }
+  function woodHit(a, out, t, gain, pitch, body) {
+    // die: bright, short, slightly inharmonic wooden "tock"
+    const f = pitch;
+    mode(a, out, t, f, 0.045, gain * 0.55);
+    mode(a, out, t, f * 2.41, 0.028, gain * 0.32);
+    mode(a, out, t, f * 3.93, 0.016, gain * 0.18);
+    // contact click
+    const src = a.createBufferSource();
+    src.buffer = clickNoise(a);
+    const hp = a.createBiquadFilter();
+    hp.type = 'bandpass';
+    hp.frequency.value = 3200 + Math.random() * 1800;
+    hp.Q.value = 0.9;
+    const g = a.createGain();
+    g.gain.value = gain * 0.9;
+    src.connect(hp).connect(g).connect(out);
     src.start(t);
+    // bowl: warm low resonance that rings a little longer
+    if (body > 0) {
+      mode(a, out, t, 190 + Math.random() * 40, 0.16, gain * body * 0.5);
+      mode(a, out, t, 430 + Math.random() * 60, 0.09, gain * body * 0.28);
+    }
+  }
+  function master(a) {
+    const comp = a.createDynamicsCompressor();
+    comp.threshold.value = -14;
+    comp.ratio.value = 4;
+    const g = a.createGain();
+    g.gain.value = 0.9;
+    comp.connect(g).connect(a.destination);
+    return comp;
+  }
+  function bell(a, out, t, freq, dur, gain) {
+    mode(a, out, t, freq, dur, gain);
+    mode(a, out, t, freq * 2.76, dur * 0.45, gain * 0.28);
+    mode(a, out, t, freq * 5.4, dur * 0.2, gain * 0.1);
   }
   function tone(a, t, freq, dur, gain, type) {
     const o = a.createOscillator();
@@ -113,16 +155,61 @@
     o.stop(t + dur + 0.02);
   }
   const SOUNDS = {
-    roll(a, t) { for (let i = 0; i < 8; i++) knock(a, t + i * 0.042 + Math.random() * 0.02, 700 + Math.random() * 1600, 0.9 * (1 - i / 10)); },
-    hold(a, t) { knock(a, t, 1800, 0.5); },
-    score(a, t) { tone(a, t, 784, 0.12, 0.12); tone(a, t + 0.07, 1175, 0.16, 0.1); },
+    roll(a, t, n) {
+      const out = master(a);
+      const dice = Math.max(1, Math.min(5, n || 5));
+      // low "rolling around the bowl" rumble under the clacks
+      const len = 0.75;
+      const nb = a.createBuffer(1, Math.floor(a.sampleRate * len), a.sampleRate);
+      const nd = nb.getChannelData(0);
+      for (let i = 0; i < nd.length; i++) {
+        const x = i / nd.length;
+        const wobble = 0.55 + 0.45 * Math.sin(x * Math.PI * 2 * 7 + Math.random() * 0.3); // dice rolling round
+        nd[i] = (Math.random() * 2 - 1) * wobble * Math.pow(1 - x, 1.6) * Math.min(1, x * 30);
+      }
+      const rs = a.createBufferSource();
+      rs.buffer = nb;
+      const lp = a.createBiquadFilter();
+      lp.type = 'bandpass';
+      lp.frequency.value = 340;
+      lp.Q.value = 0.8;
+      const rg = a.createGain();
+      rg.gain.value = 0.22 * (0.6 + dice / 12);
+      rs.connect(lp).connect(rg).connect(out);
+      rs.start(t);
+      for (let d = 0; d < dice; d++) {
+        const pitch = 1150 + Math.random() * 1000;       // each die rings slightly differently
+        let at = t + Math.random() * 0.16;               // dice land at slightly different moments
+        let gain = 0.7 + Math.random() * 0.3;
+        let gap = 0.1 + Math.random() * 0.05;
+        const bounces = 4 + Math.floor(Math.random() * 3);
+        for (let k = 0; k < bounces; k++) {
+          woodHit(a, out, at, gain, pitch * (1 + (Math.random() - 0.5) * 0.06), k < 2 ? 1 : 0.5);
+          at += gap;
+          gap *= 0.7 + Math.random() * 0.12;             // bounces get quicker as the die settles
+          gain *= 0.58 + Math.random() * 0.12;
+        }
+        // die-on-die clacks
+        if (Math.random() < 0.7) woodHit(a, out, t + 0.06 + Math.random() * 0.3, 0.32, 2600 + Math.random() * 900, 0);
+      }
+      // final settle rattle as the last die rocks to a stop
+      for (let k = 0; k < 5; k++) woodHit(a, out, t + 0.5 + k * 0.035 * (1 - k * 0.12) + Math.random() * 0.015, 0.14 * Math.pow(0.7, k), 1500 + Math.random() * 900, 0.25);
+    },
+    hold(a, t) { woodHit(a, master(a), t, 0.45, 1700, 0.25); },
+    score(a, t) { const out = master(a); bell(a, out, t, 1046.5, 0.35, 0.16); bell(a, out, t + 0.06, 1568, 0.4, 0.12); },
+    upper(a, t) {
+      // bright rising chime + sparkle: "you earned the bonus"
+      const out = master(a);
+      [784, 988, 1175, 1568].forEach((f, i) => bell(a, out, t + i * 0.075, f, 0.6, 0.15));
+      [3136, 3951, 4699].forEach((f, i) => bell(a, out, t + 0.33 + i * 0.05, f, 0.35, 0.05));
+    },
     bonus(a, t) { [523, 659, 784, 1047].forEach((f, i) => tone(a, t + i * 0.08, f, 0.22, 0.12, 'triangle')); },
     win(a, t) { [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(a, t + i * 0.09, f, 0.35, 0.11, 'triangle')); },
   };
-  function sound(name) {
+  function sound(name, arg) {
     try {
       const a = audio();
-      if (a && SOUNDS[name]) SOUNDS[name](a, a.currentTime + 0.01);
+      if (a && SOUNDS[name]) SOUNDS[name](a, a.currentTime + 0.01, arg);
     } catch (e) { /* audio unavailable */ }
   }
 
@@ -224,5 +311,5 @@
     return 'downloaded';
   }
 
-  window.FX = { confetti, sound, shareResults, drawResults };
+  window.FX = { confetti, sound, shareResults, drawResults, SOUNDS };
 })();

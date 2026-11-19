@@ -587,21 +587,31 @@
   function openResults() {
     const ranked = game.players.map((p, i) => ({ p, i, total: S.totals(p).grandTotal })).sort((a, b) => b.total - a.total);
     const top = ranked[0];
-    const tie = ranked.length > 1 && ranked[1].total === top.total;
-    const medal = (i) => ['gold', 'silver', 'bronze'][i] || '';
     const solo = ranked.length === 1;
+    const tie = !solo && ranked[1].total === top.total;
+    const margin = solo ? 0 : top.total - ranked[1].total;
+    const ord = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) ? 0 : (n % 10 < 4 ? n % 10 : 0)] || 'th');
+    const sub = solo
+      ? (isHighScore(top.total) ? 'A new personal best!' : 'Game complete')
+      : tie ? `${top.total} points each` : `${top.total} points · won by ${margin}`;
+    const rows = ranked.map((r) => {
+      const place = ranked.findIndex((x) => x.total === r.total) + 1;
+      const tied = ranked.filter((x) => x.total === r.total).length > 1;
+      const behind = top.total - r.total;
+      const label = place === 1 ? (tied ? 'Tied for 1st' : 'Winner') : `${tied ? 'Tied ' : ''}${ord(place)} · ${behind} behind`;
+      return `<div class="row standing${place === 1 ? ' first' : ''}">
+        <span class="avatar" style="--chip-color:${r.p.color}">${esc(r.p.name.charAt(0).toUpperCase())}</span>
+        <span class="row-body"><span class="row-title">${esc(r.p.name)}</span><span class="row-sub">${label}</span></span>
+        <span class="row-value">${r.total}</span>
+      </div>`;
+    }).join('');
     const body = `
       <div class="podium">
         <div class="trophy">${solo ? '🎲' : '🏆'}</div>
         <h2>${solo ? `${top.total} points` : tie ? "It's a tie!" : `${esc(top.p.name)} wins!`}</h2>
-        <p>${solo ? (isHighScore(top.total) ? 'A new personal best!' : 'Game complete') : `${top.total} points`}</p>
+        <p>${sub}</p>
       </div>
-      ${solo ? '' : `<div class="section-header"><span>Standings</span></div>
-      <div class="group">${ranked.map((r, k) => { const place = ranked.findIndex((x) => x.total === r.total); return `<button class="row" data-action="view-final" data-p="${r.i}">
-        <span class="rank ${medal(place)}">${place + 1}</span>
-        <span class="avatar" style="--chip-color:${r.p.color}">${esc(r.p.name.charAt(0).toUpperCase())}</span>
-        <span class="row-body">${esc(r.p.name)}</span>
-        <span class="row-value">${r.total}</span>${ICON.chev}</button>`; }).join('')}</div>`}
+      ${solo ? '' : `<div class="group standings">${rows}</div>`}
       <div class="actions">
         <button class="btn block" data-action="rematch">Play Again</button>
         <button class="btn tinted block" data-action="share">${ICON.share} Share Results</button>
@@ -616,9 +626,9 @@
   }
 
   /* ---------- Effects ---------- */
-  function sfx(name) { if (settings.sounds && window.FX) window.FX.sound(name); }
+  function sfx(name, arg) { if (settings.sounds && window.FX) window.FX.sound(name, arg); }
   function celebrate(kind) {
-    if (kind === 'win') sfx('win'); else sfx(kind === 'big' ? 'bonus' : 'score');
+    if (kind === 'win') sfx('win'); else sfx(kind === 'big' ? 'bonus' : 'upper');
     if (!settings.celebrate || !window.FX) return;
     if (kind === 'big') window.FX.confetti(stage, { count: 160 });
     else if (kind === 'small') window.FX.confetti(stage, { count: 60, duration: 1700 });
@@ -766,7 +776,7 @@
     save();
     render();
     haptic(15);
-    sfx('roll');
+    sfx('roll', rollingIdx.length);
     if (S.isYahtzee(turn.dice)) toast(S.earnsYahtzeeBonus(turn.dice, cur().scores) ? '🎲 Yahtzee! +100 bonus' : '🎲 Yahtzee!', 1800);
     if (reducedMotion.matches) return;
     const els = main.querySelectorAll('.die');
@@ -832,7 +842,6 @@
       case 'bonus': if (!busy && game && !game.finished) openBonus(); break;
       case 'bonus-step': if (sheetState && sheetState.step) sheetState.step(+el.dataset.d); break;
       case 'bonus-save': if (sheetState && sheetState.saveBonus) sheetState.saveBonus(); break;
-      case 'view-final': closeSheet(); break;
       case 'results': openResults(); break;
       case 'rematch': {
         const players = game.players.map((p) => ({ name: p.name, seat: p.seat }));
