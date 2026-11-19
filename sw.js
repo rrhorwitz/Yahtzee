@@ -1,5 +1,5 @@
 /* Offline support: cache the app shell, serve cache-first, refresh in background. */
-const CACHE = 'yahtzee-v20';
+const CACHE = 'yahtzee-v21';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'scoring.js', 'native.js', 'fx.js', 'app.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/favicon.svg', 'icons/favicon-32.png', 'icons/favicon-16.png', 'icons/icon-maskable-512.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',

@@ -116,6 +116,8 @@
     save();
   }
 
+  const isFlawless = (p) => S.UPPER.every((c, k) => p.scores[c] === (k + 1) * 5);
+
   function historyPlayers() {
     return game.players.map((p) => {
       const t = S.totals(p);
@@ -123,6 +125,7 @@
         name: p.name, total: t.grandTotal, color: p.color,
         yahtzees: (p.scores.yahtzee === 50 ? 1 : 0) + (p.bonusCount || 0),
         upperBonus: t.upperBonus > 0,
+        flawless: isFlawless(p),
         scores: Object.assign({}, p.scores),
         bonusCount: p.bonusCount || 0,
       };
@@ -142,6 +145,7 @@
   /* ---------- Theme ---------- */
   function applyTheme() {
     const root = document.documentElement;
+    if (settings.retro) root.dataset.retro = ''; else delete root.dataset.retro;
     if (settings.theme === 'system') delete root.dataset.theme; else root.dataset.theme = settings.theme;
     const metas = document.querySelectorAll('meta[name="theme-color"]');
     const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -538,7 +542,7 @@
       return `<button class="die ${rolled ? '' : 'blank'} ${held ? 'held' : ''}" data-action="hold" data-i="${i}" aria-label="${rolled ? `Die ${i + 1}: ${v}${held ? ', held' : ''}` : 'Die not rolled'}" ${rolled ? '' : 'disabled'}>${rolled ? cube(v) : ''}</button>`;
     }).join('');
     const left = 3 - turn.rolls;
-    return `<div class="tray" id="tray">
+    return `<div class="tray${game.goldDice ? ' gold' : ''}" id="tray">
       <div class="dice">${dice}</div>
       <button class="roll-btn" data-action="roll" ${left <= 0 ? 'disabled' : ''}>
         <span>Roll</span><span class="roll-pips" aria-label="${left} rolls left">${[0, 1, 2].map((k) => `<i class="${k < turn.rolls ? 'used' : ''}"></i>`).join('')}</span>
@@ -911,7 +915,8 @@
         const name = String(p.name).trim();
         if (!name || /^player\s*\d+$/i.test(name)) return;
         const key = name.toLowerCase();
-        const s = by.get(key) || { name, color: p.color, games: 0, wins: 0, multi: 0, sum: 0, best: 0, yahtzees: 0, bonuses: 0, tracked: 0 };
+        const s = by.get(key) || { name, color: p.color, games: 0, wins: 0, multi: 0, sum: 0, best: 0, yahtzees: 0, bonuses: 0, tracked: 0, flawless: 0 };
+        if (p.flawless) s.flawless++;
         s.games++;
         s.sum += p.total;
         s.best = Math.max(s.best, p.total);
@@ -934,6 +939,7 @@
         bits.push(`best ${s.best}`);
         if (s.tracked) bits.push(`${s.yahtzees} Yahtzee${s.yahtzees === 1 ? '' : 's'}`);
         if (s.tracked) bits.push(`bonus ${Math.round((s.bonuses / s.tracked) * 100)}%`);
+        if (s.flawless) bits.push(`🏅 Flawless${s.flawless > 1 ? ` ×${s.flawless}` : ''}`);
         return `<div class="row stat-row" aria-label="${esc(s.name)}: ${bits.join(', ')}, average ${avg}">
           <span class="avatar${initialOf(s.name).length > 1 ? ' wide' : ''}" style="--chip-color:${s.color};color:${textOn(s.color)}">${esc(initialOf(s.name))}</span>
           <span class="row-body"><span class="row-title">${esc(s.name)}</span><span class="row-sub">${bits.join(' · ')}</span></span>
@@ -999,7 +1005,7 @@
     }).join('');
     const body = `
       <div class="podium">
-        <div class="trophy">${solo ? '🎲' : '🏆'}</div>
+        ${tie ? `<div class="handshake" aria-hidden="true">${ranked.filter((r) => r.total === top.total).slice(0, 4).map((r, k, arr) => `<span class="avatar hs${k < arr.length / 2 ? ' l' : ' r'}" style="--chip-color:${r.p.color};color:${textOn(r.p.color)}">${esc(initialOf(r.p.name))}</span>`).join('')}<i class="spark s1">✦</i><i class="spark s2">✦</i><i class="spark s3">✦</i></div>` : `<div class="trophy">${solo ? '🎲' : '🏆'}</div>`}
         <h2>${solo ? `${top.total} points` : tie ? "It's a tie!" : `${esc(top.p.name)} wins!`}</h2>
         <p>${sub}</p>
       </div>
@@ -1102,6 +1108,38 @@
   });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => main.addEventListener(t, cancelPress));
   main.addEventListener('contextmenu', (e) => { if (e.target.closest('.c.filled')) e.preventDefault(); });
+  // Easter egg: hold Roll for 3 seconds to toggle gold "lucky" dice for this game.
+  let goldHold = null;
+  main.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('[data-action="roll"]') || !game || game.finished) return;
+    pressFired = false;
+    goldHold = setTimeout(() => {
+      goldHold = null;
+      pressFired = true;
+      game.goldDice = !game.goldDice;
+      save();
+      render();
+      haptic('success');
+      sfx('upper');
+      toast(game.goldDice ? '✨ Lucky gold dice' : 'Classic dice', 1600);
+    }, 3000);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => main.addEventListener(t, () => { clearTimeout(goldHold); goldHold = null; }));
+  main.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-action="roll"]')) e.preventDefault(); });
+  let subTaps = [];
+  nav.addEventListener('click', (e) => {
+    if (!e.target.closest('.nav-sub')) return;
+    const now = Date.now();
+    subTaps = subTaps.filter((t) => now - t < 2500).concat(now);
+    if (subTaps.length >= 7) {
+      subTaps = [];
+      settings.retro = !settings.retro;
+      save();
+      applyTheme();
+      haptic('success');
+      toast(settings.retro ? '📝 Retro score pad' : 'Back to modern', 1600);
+    }
+  });
   let undoHold = null;
   nav.addEventListener('pointerdown', (e) => {
     if (!e.target.closest('[data-action="undo"]') || busy || undoStack.length < 1) return;
@@ -1132,6 +1170,8 @@
     haptic('medium');
     const yahtzee = bonus || (cat === 'yahtzee' && value === 50);
     const upper = !hadUpperBonus && S.totals(p).upperBonus > 0;
+    const flawless = S.UPPER.includes(cat) && isFlawless(p);
+    if (flawless) setTimeout(() => { toast('🏅 Flawless! Five of every number', 2600); celebrate('win'); }, 700);
     if (yahtzee) { toast(bonus ? '🎉 Yahtzee Bonus +100' : '🎉 Yahtzee! +50', 1500); celebrate('big'); }
     else if (upper) { toast('⭐️ Upper bonus +35', 1500); celebrate('small'); }
     else sfx('score');
@@ -1203,8 +1243,12 @@
     render();
     haptic('medium');
     sfx('roll', rollingIdx.length);
-    if (S.isYahtzee(turn.dice)) toast(S.earnsYahtzeeBonus(turn.dice, cur().scores) ? '🎲 Yahtzee! +100 bonus' : '🎲 Yahtzee!', 1800);
+    const firstRollYahtzee = turn.rolls === 1 && S.isYahtzee(turn.dice);
+    if (firstRollYahtzee) noWay();
+    else if (S.isYahtzee(turn.dice)) toast(S.earnsYahtzeeBonus(turn.dice, cur().scores) ? '🎲 Yahtzee! +100 bonus' : '🎲 Yahtzee!', 1800);
     if (reducedMotion.matches) return;
+    const tray = main.querySelector('.tray');
+    if (tray) tray.classList.toggle('slowmo', firstRollYahtzee);
     // 3D roll: each cube starts several full turns away on random axes and spins down
     // onto its result while hopping into the tray; dice land one after another.
     const els = main.querySelectorAll('.die');
@@ -1220,6 +1264,24 @@
       void el.offsetWidth; // restart the animation
       el.classList.add('rolling');
     });
+  }
+
+  /* Easter egg: five of a kind straight out of the cup (1 in 1,296). Slow-motion roll,
+     then a big rubber-stamp moment once the dice land. */
+  function noWay() {
+    const land = reducedMotion.matches ? 100 : 1750;
+    setTimeout(() => {
+      const st = document.createElement('div');
+      st.className = 'stamp';
+      st.setAttribute('role', 'status');
+      st.innerHTML = '<span class="stamp-small">No way!</span><span class="stamp-big">YAHTZEE!</span><span class="stamp-sub">first roll</span>';
+      stage.appendChild(st);
+      requestAnimationFrame(() => st.classList.add('show'));
+      haptic('success');
+      sfx('win');
+      if (settings.celebrate && window.FX) { window.FX.confetti(stage, { count: 240, y: 0.25, duration: 3000 }); setTimeout(() => window.FX.confetti(stage, { count: 120, y: 0.4 }), 500); }
+      setTimeout(() => { st.classList.remove('show'); st.classList.add('hide'); setTimeout(() => st.remove(), 400); }, 2300);
+    }, land);
   }
 
   function onScoreTap(cat) {
