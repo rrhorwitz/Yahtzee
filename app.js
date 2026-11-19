@@ -212,9 +212,8 @@
     const curCls = (i) => (isCur(i) ? ' cur' : '');
 
     let h = '<div class="c corner"></div>';
-    h += players.map((p, i) => `<div class="c head${curCls(i)}"${colStyle(i)}>
-      <span class="avatar" style="--chip-color:${p.color}">${esc(p.name.charAt(0).toUpperCase() || '?')}</span>
-      <span class="pname">${esc(p.name)}</span></div>`).join('');
+    h += players.map((p, i) => `<div class="c head${curCls(i)}"${colStyle(i)} title="${esc(p.name)}" aria-label="${esc(p.name)}">
+      <span class="avatar" style="--chip-color:${p.color}">${esc(p.name.charAt(0).toUpperCase() || '?')}</span></div>`).join('');
 
     const catRow = (cat, extra) => {
       let r = `<button class="c label${extra || ''}" data-action="info" data-cat="${cat}" aria-label="How ${S.LABELS[cat]} scores"><span class="tile">${tile(cat)}</span><span class="lbl"><span class="lbl-f">${S.LABELS[cat]}</span><span class="lbl-s">${SHORT[cat] || S.LABELS[cat]}</span></span></button>`;
@@ -283,8 +282,7 @@
     const w = board.clientWidth;
     const colW = w / (1.55 + n);
     const fs = parseFloat(getComputedStyle(board).fontSize) || 16;
-    const longest = Math.max(...game.players.map((p) => p.name.length));
-    const initials = colW < Math.max(58, longest * fs * 0.48 + 14);
+    const initials = colW < 58; // narrow columns: short labels, wider label column
     board.classList.toggle('initials', initials);
     const labelW = initials ? (w * 2) / (2 + n) : colW * 1.55;
     board.classList.toggle('no-tiles', labelW < fs * (initials ? 7 : 8.6));

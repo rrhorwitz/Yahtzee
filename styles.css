@@ -187,10 +187,8 @@ html { background: #1c1c1e; }
 }
 .c.corner, .c.head { border-top: 0; }
 .c.cur { background: color-mix(in srgb, var(--pc) 11%, var(--card)); }
-.c.head { flex-direction: column; gap: 3px; padding: 8px 2px 6px; }
-.c.head .avatar { width: 1.75em; height: 1.75em; border-radius: 50%; font-size: 0.85em; }
-.c.head .pname { font-size: 0.78em; font-weight: 600; max-width: 100%; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.c.head.cur .pname { color: var(--pc); }
+.c.head { flex-direction: column; gap: 3px; padding: 8px 2px; }
+.c.head .avatar { width: 2.1em; height: 2.1em; border-radius: 50%; font-size: 0.95em; }
 .c.head.cur::after { content: ""; position: absolute; left: 22%; right: 22%; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: var(--pc); }
 .c.label { justify-content: flex-start; gap: 0.55em; padding: 0 6px 0 12px; }
 .c.label .tile { flex: none; width: 1.45em; height: 1.45em; display: grid; }
@@ -200,10 +198,9 @@ html { background: #1c1c1e; }
 .board.no-tiles .c.label .tile { display: none; }
 .board.no-tiles .c.label { padding-left: 10px; }
 .board.initials { --lw: 2fr; }
-.board.initials .c.head .pname, .lbl-s { display: none; }
+.lbl-s { display: none; }
 .board.initials .lbl-s { display: inline; }
 .board.initials .lbl-f { display: none; }
-.board.initials .c.head .avatar { width: 2em; height: 2em; font-size: 0.95em; }
 button.c.label { text-align: left; color: inherit; transition: background .2s; }
 button.c.label:active, button.c.label.pressed { background: var(--fill); }
 .c.sec { border-top: 4px solid var(--bg); }
