@@ -3,7 +3,7 @@
   'use strict';
 
   const S = window.Scoring;
-  const APP_VERSION = '36';
+  const APP_VERSION = '37';
   const COLORS = ['#007AFF', '#FF9500', '#34C759', '#FF2D55', '#AF52DE', '#5AC8FA', '#5856D6', '#FFCC00'];
   const KEYS = { settings: 'yahtzee.settings', game: 'yahtzee.game', undo: 'yahtzee.undo', history: 'yahtzee.history', last: 'yahtzee.lastPlayers' };
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -957,6 +957,7 @@
         ${sw('keepAwake', 'Keep Screen On', 'Stop the screen dimming during a game')}
         ${sw('celebrate', 'Celebrations', 'Confetti for Yahtzees, bonuses and wins')}
         ${sw('sounds', 'Sounds', 'Dice rolls and scoring chimes')}
+        ${settings.sounds ? `<button class="row" data-action="test-sound"><span class="row-body"><span class="row-title" style="color:var(--accent)">Test Sound</span><span class="row-sub" id="sound-status">Tap to play a chime</span></span></button>` : ''}
         ${settings.sounds && navigator.audioSession ? sw('soundsSilent', 'Play in Silent Mode', 'Sounds play even when the iPhone is on silent') : ''}
         ${sw('hint', 'Best-Move Hint', 'Star the strongest box for your roll (dice roller)')}
       </div>
@@ -1443,6 +1444,18 @@
       case 'yb-yes': if (sheetState && sheetState.pending) { const { cat, v } = sheetState.pending; commitScore(cat, v, { yahtzeeBonus: true }); } break;
       case 'yb-no': if (sheetState && sheetState.pending) { const { cat, v } = sheetState.pending; commitScore(cat, v); } break;
       case 'share': shareResults(); break;
+      case 'test-sound': {
+        if (window.FX) {
+          window.FX.unlock();
+          window.FX.sound('upper');
+          setTimeout(() => {
+            const st = window.FX.audioStatus();
+            const s = sheet.querySelector('#sound-status');
+            if (s) s.textContent = `Playing via ${st.mode === 'clips' ? 'audio clips' : 'Web Audio'}${st.standalone ? ' · home-screen app' : ''} · engine ${st.context} · ${st.clips} clips ready`;
+          }, 250);
+        }
+        break;
+      }
       case 'gc-show': NATIVE.gameCenter.show().catch((err) => toast(esc(err.message || 'Game Center unavailable'))); break;
       case 'gc-post': openGameCenterPost(); break;
       case 'gc-pick': {
