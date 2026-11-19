@@ -531,7 +531,7 @@
   const CUBE_TURN = { 1: [0, 0], 6: [0, 180], 3: [0, -90], 4: [0, 90], 2: [-90, 0], 5: [90, 0] };
   function cube(v) {
     const [fx, fy] = CUBE_TURN[v];
-    return `<span class="cube" style="--fx:${fx}deg;--fy:${fy}deg" aria-hidden="true"><i class="core c1"></i><i class="core c2"></i><i class="core c3"></i>${[1, 2, 3, 4, 5, 6].map((n) => `<span class="face f${n}">${dieFace(n)}</span>`).join('')}</span>`;
+    return `<span class="cube" style="--fx:${fx}deg;--fy:${fy}deg" aria-hidden="true">${[1, 2, 3, 4, 5, 6].map((n) => `<i class="core k${n}"></i>`).join('')}${[1, 2, 3, 4, 5, 6].map((n) => `<span class="face f${n}">${dieFace(n)}</span>`).join('')}</span>`;
   }
 
   const DICE_THEMES = [
