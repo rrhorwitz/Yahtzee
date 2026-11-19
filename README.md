@@ -13,6 +13,10 @@ An Apple-styled Yahtzee score card that runs in the browser and installs to a ph
 - **Light, Dark and System appearance**.
 - **Works offline** through a service worker.
 
+## iPhone app
+
+See [IOS.md](IOS.md) for building the native app (haptics, keep-awake, Game Center) and submitting it to the App Store.
+
 ## Run locally
 
 ```sh

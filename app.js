@@ -40,7 +40,13 @@
     return m ? `P${m[1]}` : (String(name).trim().charAt(0).toUpperCase() || '?');
   };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const haptic = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms || 8); } catch (e) { /* ignore */ } };
+  /* Haptics: real taps in the iPhone app (native.js); vibration fallback on Android browsers. */
+  const NATIVE = window.Native || { isNative: false, haptic: () => false, keepAwake: () => false, gameCenter: { available: false } };
+  const haptic = (kind) => {
+    if (NATIVE.haptic(kind)) return;
+    const ms = { light: 6, medium: 12, heavy: 18, success: 24 }[kind] || 8;
+    try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* ignore */ }
+  };
 
   /* ---------- Icons (SF Symbols–style) ---------- */
   const ICON = {
@@ -715,6 +721,7 @@
       <div class="group">
         <button class="row" data-action="new-game"><span class="row-body" style="color:var(--accent)">New Game…</span></button>
         ${game && !game.finished ? '<button class="row" data-action="rename"><span class="row-body">Rename Players…</span>' + ICON.chev + '</button>' : ''}
+        ${NATIVE.gameCenter.available ? '<button class="row" data-action="gc-show"><span class="row-body">Game Center Leaderboard</span>' + ICON.chev + '</button>' : ''}
         <button class="row" data-action="history"><span class="row-body">Scores &amp; History</span><span class="row-value empty">${history.length || ''}</span>${ICON.chev}</button>
       </div>
       <p class="section-footer">Tap a category name to see how it scores. Press and hold any score to change it.</p>
@@ -827,10 +834,23 @@
       <div class="actions">
         <button class="btn block" data-action="rematch">Play Again</button>
         <button class="btn tinted block" data-action="share">${ICON.share} Share Results</button>
+        ${NATIVE.gameCenter.available ? '<button class="btn tinted block" data-action="gc-post">Post to Game Center</button>' : ''}
         <button class="text-btn" data-action="new-game">New Players</button>
       </div>`;
     openSheet({ title: 'Game Over', body });
   }
+  /* Game Center is one account per phone, so ask which player is the phone's owner. */
+  function openGameCenterPost() {
+    openSheet({
+      title: 'Post to Game Center',
+      left: '<button class="text-btn" data-action="close-sheet">Cancel</button>', right: '',
+      body: `<p class="sheet-lede">Which player is signed in to Game Center on this iPhone?</p>
+        <div class="group">${game.players.map((p, i) => `<button class="row stat-row" data-action="gc-pick" data-p="${i}">
+          <span class="avatar${initialOf(p.name).length > 1 ? ' wide' : ''}" style="--chip-color:${p.color};color:${textOn(p.color)}">${esc(initialOf(p.name))}</span>
+          <span class="row-body">${esc(p.name)}</span><span class="row-value">${S.totals(p).grandTotal}</span></button>`).join('')}</div>`,
+    });
+  }
+
   function isHighScore(total) {
     let best = 0;
     history.forEach((g) => { if (g.id !== game.id) g.players.forEach((p) => { best = Math.max(best, p.total); }); });
@@ -841,6 +861,7 @@
   function sfx(name, arg) { if (settings.sounds && window.FX) window.FX.sound(name, arg); }
   function celebrate(kind) {
     if (kind === 'win') sfx('win'); else sfx(kind === 'big' ? 'bonus' : 'upper');
+    haptic('success');
     if (!settings.celebrate || !window.FX) return;
     if (kind === 'big') window.FX.confetti(stage, { count: 160 });
     else if (kind === 'small') window.FX.confetti(stage, { count: 60, duration: 1700 });
@@ -858,8 +879,13 @@
   /* Keep the screen on while a game is in progress. */
   let wakeLock = null;
   let wakePending = false;
+  let nativeAwake = null;
   async function syncWakeLock() {
     const want = !!(settings.keepAwake && game && !game.finished && document.visibilityState === 'visible');
+    if (NATIVE.isNative) {
+      if (nativeAwake !== want) { nativeAwake = want; NATIVE.keepAwake(want); }
+      return;
+    }
     if (wakePending) return;
     try {
       if (want && !wakeLock && navigator.wakeLock) {
@@ -894,7 +920,7 @@
     pressTimer = setTimeout(() => {
       pressFired = true;
       cancelPress();
-      haptic(15);
+      haptic('heavy');
       openEdit(+cell.dataset.p, cell.dataset.cat);
     }, 480);
   });
@@ -922,7 +948,7 @@
     justScored = cat;
     save();
     render();
-    haptic(12);
+    haptic('medium');
     const yahtzee = bonus || (cat === 'yahtzee' && value === 50);
     const upper = !hadUpperBonus && S.totals(p).upperBonus > 0;
     if (yahtzee) { toast(bonus ? '🎉 Yahtzee Bonus +100' : '🎉 Yahtzee! +50', 1500); celebrate('big'); }
@@ -985,7 +1011,7 @@
     turn.rolls++;
     save();
     render();
-    haptic(15);
+    haptic('medium');
     sfx('roll', rollingIdx.length);
     if (S.isYahtzee(turn.dice)) toast(S.earnsYahtzeeBonus(turn.dice, cur().scores) ? '🎲 Yahtzee! +100 bonus' : '🎲 Yahtzee!', 1800);
     if (reducedMotion.matches) return;
@@ -1039,7 +1065,7 @@
         if (busy || game.turn.rolls === 0) return;
         const i = +el.dataset.i;
         game.turn.held[i] = !game.turn.held[i];
-        haptic(5);
+        haptic('light');
         sfx('hold');
         save();
         el.classList.toggle('held', game.turn.held[i]);
@@ -1051,6 +1077,16 @@
         else if (sheetState && sheetState.cat) commitScore(sheetState.cat, +el.dataset.v);
         break;
       case 'share': shareResults(); break;
+      case 'gc-show': NATIVE.gameCenter.show().catch((err) => toast(esc(err.message || 'Game Center unavailable'))); break;
+      case 'gc-post': openGameCenterPost(); break;
+      case 'gc-pick': {
+        const p = game.players[+el.dataset.p];
+        closeSheet();
+        NATIVE.gameCenter.submit(S.totals(p).grandTotal)
+          .then(() => toast(`Posted ${esc(p.name)}'s ${S.totals(p).grandTotal} to Game Center`))
+          .catch((err) => toast(esc(err.message || 'Couldn’t reach Game Center')));
+        break;
+      }
       case 'bonus': if (!busy && game && !game.finished) openBonus(); break;
       case 'bonus-step': if (sheetState && sheetState.step) sheetState.step(+el.dataset.d); break;
       case 'bonus-save': if (sheetState && sheetState.saveBonus) sheetState.saveBonus(); break;

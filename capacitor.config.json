@@ -1,0 +1,10 @@
+{
+  "appId": "com.rrhorwitz.scorecard",
+  "appName": "Score Card",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#F2F2F7",
+    "scrollEnabled": false
+  }
+}

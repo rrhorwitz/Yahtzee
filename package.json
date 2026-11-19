@@ -5,6 +5,18 @@
   "description": "Apple-styled Yahtzee score card PWA that auto-rotates between players.",
   "scripts": {
     "start": "python3 -m http.server 8080",
-    "test": "node tests/scoring.test.js"
+    "test": "node tests/scoring.test.js",
+    "build:web": "bash scripts/build-web.sh",
+    "ios:sync": "npm run build:web && npx cap sync ios",
+    "ios:open": "npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor-community/keep-awake": "^8.0.1",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2"
   }
 }
