@@ -576,3 +576,7 @@ body { -webkit-touch-callout: none; }
 .standing.first .row-title { font-weight: 600; }
 .standing.first .row-sub { color: var(--orange); font-weight: 600; }
 .standing.first .row-value { color: var(--orange); }
+
+/* Two-character initials (P1, P2…) need a touch smaller text to fit the circle */
+.avatar.wide { font-size: 0.8em; letter-spacing: -0.3px; }
+.standing .avatar.wide { font-size: 13px; }

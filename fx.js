@@ -273,7 +273,10 @@
       ctx.fill();
       ctx.fillStyle = '#fff';
       ctx.font = `700 40px ${FONT}`;
-      ctx.fillText((p.name.charAt(0) || '?').toUpperCase(), 250, y + rowH / 2 + 14);
+      const m = /^player\s*(\d+)$/i.exec(String(p.name).trim());
+      const ini = m ? `P${m[1]}` : (String(p.name).trim().charAt(0).toUpperCase() || '?');
+      ctx.font = `700 ${ini.length > 1 ? 32 : 40}px ${FONT}`;
+      ctx.fillText(ini, 250, y + rowH / 2 + (ini.length > 1 ? 11 : 14));
       ctx.textAlign = 'left';
       ctx.font = `600 48px ${FONT}`;
       let name = p.name;

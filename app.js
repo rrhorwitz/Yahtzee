@@ -34,6 +34,11 @@
   const toastEl = $('#toast');
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  /* "Player 2" (the default name) → "P2"; a real name → its first letter. */
+  const initialOf = (name) => {
+    const m = /^player\s*(\d+)$/i.exec(String(name).trim());
+    return m ? `P${m[1]}` : (String(name).trim().charAt(0).toUpperCase() || '?');
+  };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const haptic = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms || 8); } catch (e) { /* ignore */ } };
 
@@ -216,7 +221,7 @@
 
     let h = '<div class="c corner"></div>';
     h += players.map((p, i) => `<div class="c head${curCls(i)}"${colStyle(i)} title="${esc(p.name)}" aria-label="${esc(p.name)}">
-      <span class="avatar" style="--chip-color:${p.color}">${esc(p.name.charAt(0).toUpperCase() || '?')}</span></div>`).join('');
+      <span class="avatar${initialOf(p.name).length > 1 ? ' wide' : ''}" style="--chip-color:${p.color}">${esc(initialOf(p.name))}</span></div>`).join('');
 
     const catRow = (cat, extra) => {
       let r = `<button class="c label${extra || ''}" data-action="info" data-cat="${cat}" aria-label="How ${S.LABELS[cat]} scores"><span class="tile">${tile(cat)}</span><span class="lbl"><span class="lbl-f">${S.LABELS[cat]}</span><span class="lbl-s">${SHORT[cat] || S.LABELS[cat]}</span></span></button>`;
@@ -603,7 +608,7 @@
       const behind = top.total - r.total;
       const label = place === 1 ? (tied ? 'Tied for 1st' : 'Winner') : `${tied ? 'Tied ' : ''}${ord(place)} · ${behind} behind`;
       return `<div class="row standing${place === 1 ? ' first' : ''}">
-        <span class="avatar" style="--chip-color:${r.p.color}">${esc(r.p.name.charAt(0).toUpperCase())}</span>
+        <span class="avatar${initialOf(r.p.name).length > 1 ? ' wide' : ''}" style="--chip-color:${r.p.color}">${esc(initialOf(r.p.name))}</span>
         <span class="row-body"><span class="row-title">${esc(r.p.name)}</span><span class="row-sub">${label}</span></span>
         <span class="row-value">${r.total}</span>
       </div>`;
