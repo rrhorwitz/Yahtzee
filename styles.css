@@ -732,7 +732,7 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 
 .die.held { background: transparent; }
 .die.held .face { background: color-mix(in srgb, var(--accent) 14%, #fff); color: var(--accent); }
-.die.held:not(.blank) { box-shadow: 0 0 0 3px var(--accent), 0 6px 14px rgba(0,0,0,.18); border-radius: 22%; }
+.die.held:not(.blank) { box-shadow: none; border-radius: 17%; outline: 2.5px solid var(--ring, var(--accent)); outline-offset: 2.5px; }
 
 .die.rolling { animation: die-hop .78s cubic-bezier(.3,.7,.4,1) var(--delay, 0ms) both; }
 .die.rolling .cube { animation: cube-roll .78s cubic-bezier(.2,.65,.25,1) var(--delay, 0ms) both; }
@@ -891,8 +891,7 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
   padding: 10px 4px 8px; border-radius: 12px; transition: background .2s, transform .12s;
 }
 .dice-theme:active { transform: scale(.95); }
-.dice-theme.on { background: var(--accent-soft); }
-.dice-theme.on .dice-swatch { box-shadow: 0 0 0 2.5px var(--card), 0 0 0 4.5px var(--accent), 0 4px 10px rgba(0,0,0,.18); }
+.dice-theme.on .dice-swatch { outline: 2.5px solid var(--ring, var(--accent)); outline-offset: 3px; }
 .dice-swatch {
   width: 46px; height: 46px; border-radius: 22%; display: grid; place-items: center;
   background: var(--face-bg, var(--die)); color: var(--face-pip, var(--pip));
@@ -900,7 +899,18 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 }
 .dice-swatch svg { width: 100%; height: 100%; }
 .dice-theme-name { font-size: 0.765rem; font-weight: 500; }
-.dice-theme.on .dice-theme-name { color: var(--accent); font-weight: 600; }
+.dice-theme.on .dice-theme-name { font-weight: 600; }
 /* The spinning 3D cube must never steal taps from neighbours (Roll button, other dice);
    only the die's own square box is tappable. */
 .cube, .cube * { pointer-events: none; }
+
+/* Per-style outline colour (held dice + selected style) */
+.theme-classic { --ring: var(--accent); }
+.theme-casino { --ring: #F5C542; }
+.theme-midnight { --ring: #F5C542; }
+.theme-sparkle { --ring: #A66BFF; }
+.theme-wood { --ring: #B8732E; }
+.theme-ocean { --ring: #3FB6FF; }
+.tray.gold { --ring: #E0A21B; }
+.dice-swatch { border-radius: 17%; }
+:root[data-retro] .tray.theme-classic { --ring: var(--accent); }
