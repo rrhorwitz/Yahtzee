@@ -3,7 +3,7 @@
   'use strict';
 
   const S = window.Scoring;
-  const APP_VERSION = '39';
+  const APP_VERSION = '40';
   const COLORS = ['#007AFF', '#FF9500', '#34C759', '#FF2D55', '#AF52DE', '#5AC8FA', '#5856D6', '#FFCC00'];
   const KEYS = { settings: 'yahtzee.settings', game: 'yahtzee.game', undo: 'yahtzee.undo', history: 'yahtzee.history', last: 'yahtzee.lastPlayers' };
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
