@@ -522,12 +522,20 @@
     infoOpen = key;
   }
 
+  /* A real 3D die: six faces (opposites add to 7) plus an inner core so the rounded
+     corners never show through. --fx/--fy turn the cube so `v` faces the player. */
+  const CUBE_TURN = { 1: [0, 0], 6: [0, 180], 3: [0, -90], 4: [0, 90], 2: [-90, 0], 5: [90, 0] };
+  function cube(v) {
+    const [fx, fy] = CUBE_TURN[v];
+    return `<span class="cube" style="--fx:${fx}deg;--fy:${fy}deg" aria-hidden="true"><i class="core c1"></i><i class="core c2"></i><i class="core c3"></i>${[1, 2, 3, 4, 5, 6].map((n) => `<span class="face f${n}">${dieFace(n)}</span>`).join('')}</span>`;
+  }
+
   function renderTray() {
     const turn = game.turn;
     const rolled = turn.rolls > 0;
     const dice = turn.dice.map((v, i) => {
       const held = rolled && turn.held[i];
-      return `<button class="die ${rolled ? '' : 'blank'} ${held ? 'held' : ''}" data-action="hold" data-i="${i}" aria-label="${rolled ? `Die ${i + 1}: ${v}${held ? ', held' : ''}` : 'Die not rolled'}" ${rolled ? '' : 'disabled'}>${rolled ? dieFace(v) : ''}</button>`;
+      return `<button class="die ${rolled ? '' : 'blank'} ${held ? 'held' : ''}" data-action="hold" data-i="${i}" aria-label="${rolled ? `Die ${i + 1}: ${v}${held ? ', held' : ''}` : 'Die not rolled'}" ${rolled ? '' : 'disabled'}>${rolled ? cube(v) : ''}</button>`;
     }).join('');
     const left = 3 - turn.rolls;
     return `<div class="tray" id="tray">
@@ -1197,33 +1205,21 @@
     sfx('roll', rollingIdx.length);
     if (S.isYahtzee(turn.dice)) toast(S.earnsYahtzeeBonus(turn.dice, cur().scores) ? '🎲 Yahtzee! +100 bonus' : '🎲 Yahtzee!', 1800);
     if (reducedMotion.matches) return;
-    // Tumble: each die spins on its own random axes, lands with a small bounce,
-    // and flips through faces until it settles on its result.
+    // 3D roll: each cube starts several full turns away on random axes and spins down
+    // onto its result while hopping into the tray; dice land one after another.
     const els = main.querySelectorAll('.die');
-    const spin = () => (Math.random() < 0.5 ? -1 : 1) * (240 + Math.random() * 300);
+    const turns = () => (Math.random() < 0.5 ? -1 : 1) * 360 * (2 + Math.floor(Math.random() * 2));
     rollingIdx.forEach((i, k) => {
       const el = els[i];
       if (!el) return;
-      el.style.setProperty('--rx', spin() + 'deg');
-      el.style.setProperty('--ry', spin() + 'deg');
-      el.style.setProperty('--rz', (Math.random() - 0.5) * 120 + 'deg');
-      el.style.animationDelay = k * 35 + 'ms';
+      el.style.setProperty('--tx', turns() + 'deg');
+      el.style.setProperty('--ty', turns() + 'deg');
+      el.style.setProperty('--tz', (Math.random() - 0.5) * 90 + 'deg');
+      el.style.setProperty('--delay', k * 45 + 'ms');
       el.classList.remove('rolling');
       void el.offsetWidth; // restart the animation
       el.classList.add('rolling');
     });
-    const t0 = performance.now();
-    const flick = () => {
-      const t = performance.now() - t0;
-      rollingIdx.forEach((i, k) => {
-        const el = els[i];
-        if (!el) return;
-        const settle = 380 + k * 35;
-        el.innerHTML = dieFace(t < settle ? 1 + Math.floor(Math.random() * 6) : turn.dice[i]);
-      });
-      if (t < 380 + rollingIdx.length * 35) setTimeout(flick, 65);
-    };
-    flick();
   }
 
   function onScoreTap(cat) {
