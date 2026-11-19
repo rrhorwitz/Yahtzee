@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Yahtzee Score Card</title>
+  <meta name="description" content="A Yahtzee score card that flips to face each player.">
+  <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Yahtzee">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    /* Apply theme before first paint to avoid a flash. */
+    try {
+      var t = (JSON.parse(localStorage.getItem('yahtzee.settings') || '{}').theme) || 'system';
+      if (t !== 'system') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <div id="stage" class="stage">
+    <div id="scroller" class="scroller">
+      <header class="nav" id="nav"></header>
+      <main id="main" class="main"></main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="sheet-layer" class="sheet-layer" aria-hidden="true">
+      <div class="sheet-backdrop" data-action="close-sheet"></div>
+      <section class="sheet" id="sheet" role="dialog" aria-modal="true"></section>
+    </div>
+  </div>
+  <script src="scoring.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
