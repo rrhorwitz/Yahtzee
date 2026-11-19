@@ -775,7 +775,8 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
   animation: gold-shimmer 3.2s ease-in-out infinite;
 }
 .tray.gold .cube .core { background: #D9A63A; }
-.tray.gold .die.held .face { background: linear-gradient(135deg, #FFF1C4, #F2C04A); color: var(--accent); }
+/* held gold dice stay gold (outline + sink show they're held) */
+.tray.gold .die.held .face { background: linear-gradient(135deg, #FFE7A0 0%, #F5C542 38%, #E0A21B 62%, #FFE18A 100%); background-size: 220% 220%; color: #5A3A00; }
 @keyframes gold-shimmer { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 
 /* First-roll Yahtzee: slow motion, then a rubber stamp */
@@ -884,8 +885,8 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
   50% { background-position: 0 0, 0 0, 0 0, 0 0, 100% 50%; }
 }
 /* held dice keep their style; the ring and lift show they're held */
-.tray:not(.theme-classic) .die.held .face { background: var(--face-bg); color: var(--face-pip); }
-.tray:not(.theme-classic) .die.held .f1 { box-shadow: inset 0 0 0 100px rgba(255,255,255,.14), inset 0 0 0 0.5px rgba(0,0,0,.25); }
+.tray:not(.theme-classic):not(.gold) .die.held .face { background: var(--face-bg); color: var(--face-pip); }
+.tray:not(.theme-classic):not(.gold) .die.held .f1 { box-shadow: inset 0 0 0 100px rgba(255,255,255,.14), inset 0 0 0 0.5px rgba(0,0,0,.25); }
 .tray.theme-sparkle .die.held .face { background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 300% 300%; }
 
 /* Settings: dice style picker */
@@ -911,7 +912,7 @@ button.c.pacecell.pressed, button.c.pacecell:active { background: var(--fill-2);
 /* Per-style outline colour (held dice + selected style) */
 .theme-classic { --ring: var(--accent); }
 .theme-casino { --ring: #F5C542; }
-.theme-midnight { --ring: #F5C542; }
+.theme-midnight { --ring: #B8C0D0; }
 .theme-sparkle { --ring: #A66BFF; }
 .theme-wood { --ring: #B8732E; }
 .theme-ocean { --ring: #3FB6FF; }
