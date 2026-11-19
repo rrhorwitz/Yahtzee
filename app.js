@@ -225,7 +225,7 @@
       <span class="pname">${esc(p.name)}</span></div>`).join('');
 
     const catRow = (cat, extra) => {
-      let r = `<div class="c label${extra || ''}"><span class="tile">${tile(cat)}</span><span class="lbl">${S.LABELS[cat]}</span></div>`;
+      let r = `<button class="c label${extra || ''}" data-action="info" data-cat="${cat}" aria-label="How ${S.LABELS[cat]} scores"><span class="tile">${tile(cat)}</span><span class="lbl"><span class="lbl-f">${S.LABELS[cat]}</span><span class="lbl-s">${SHORT[cat] || S.LABELS[cat]}</span></span></button>`;
       players.forEach((p, i) => {
         const v = p.scores[cat];
         const cls = ['c', 'val' + (extra || '') + curCls(i)];
@@ -253,7 +253,7 @@
 
     S.UPPER.forEach((c) => { h += catRow(c); });
 
-    h += `<div class="c label sum"><span class="lbl">Bonus <small>63+</small></span></div>`;
+    h += `<button class="c label sum" data-action="info" data-cat="upperBonus" aria-label="How the upper bonus works"><span class="lbl"><span class="lbl-f">Bonus <small>63+</small></span><span class="lbl-s">Bonus</span></span></button>`;
     h += players.map((p, i) => {
       const t = totals[i];
       return `<div class="c val sum${curCls(i)}${t.upperBonus ? ' earned' : ''}"${colStyle(i)}>${t.upperBonus
@@ -262,7 +262,7 @@
 
     S.LOWER.forEach((c, k) => { h += catRow(c, k === 0 ? ' sec' : ''); });
 
-    h += `<div class="c label sum"><span class="lbl">Yahtzee Bonus</span></div>`;
+    h += `<button class="c label sum" data-action="info" data-cat="yahtzeeBonus" aria-label="How the Yahtzee bonus works"><span class="lbl"><span class="lbl-f">Yahtzee Bonus</span><span class="lbl-s">Y. Bonus</span></span></button>`;
     h += players.map((p, i) => {
       const t = totals[i];
       const txt = p.bonusCount ? `+${t.yahtzeeBonus}` : '';
@@ -275,7 +275,90 @@
     h += players.map((p, i) => `<div class="c val total${curCls(i)}${game.finished && n > 1 && totals[i].grandTotal === best ? ' winner' : ''}"${colStyle(i)}>${totals[i].grandTotal}</div>`).join('');
 
     main.innerHTML = (settings.dice && !game.finished ? renderTray() : '')
-      + `<div class="board${n >= 5 ? ' many' : ''}" style="--cols:${n}">${h}</div>`;
+      + `<div class="board" style="--cols:${n}">${h}</div>`;
+    infoOpen = null;
+    fitBoard();
+  }
+
+  const SHORT = { threeKind: '3 Kind', fourKind: '4 Kind', fullHouse: 'F. House', smallStraight: 'Sm. Str.', largeStraight: 'Lg. Str.' };
+
+  /* Switch to initials / hide icons when columns get tight. */
+  function fitBoard() {
+    const board = main.querySelector('.board');
+    if (!board || !game) return;
+    const n = game.players.length;
+    const w = board.clientWidth;
+    const colW = w / (1.55 + n);
+    const fs = parseFloat(getComputedStyle(board).fontSize) || 16;
+    const longest = Math.max(...game.players.map((p) => p.name.length));
+    const initials = colW < Math.max(58, longest * fs * 0.48 + 14);
+    board.classList.toggle('initials', initials);
+    const labelW = initials ? (w * 2) / (2 + n) : colW * 1.55;
+    board.classList.toggle('no-tiles', labelW < fs * (initials ? 7 : 8.6));
+  }
+
+  /* ---------- "How to score" popover ---------- */
+  const INFO = {
+    ones: { dice: [1, 4, 1, 6, 1], on: [1, 0, 1, 0, 1], rule: 'Add up only the aces.', eq: '3' },
+    twos: { dice: [2, 5, 2, 2, 3], on: [1, 0, 1, 1, 0], rule: 'Add up only the twos.', eq: '6' },
+    threes: { dice: [3, 3, 6, 3, 1], on: [1, 1, 0, 1, 0], rule: 'Add up only the threes.', eq: '9' },
+    fours: { dice: [4, 2, 4, 4, 6], on: [1, 0, 1, 1, 0], rule: 'Add up only the fours.', eq: '12' },
+    fives: { dice: [5, 1, 5, 3, 5], on: [1, 0, 1, 0, 1], rule: 'Add up only the fives.', eq: '15' },
+    sixes: { dice: [6, 6, 2, 6, 6], on: [1, 1, 0, 1, 1], rule: 'Add up only the sixes.', eq: '24' },
+    threeKind: { dice: [4, 4, 4, 2, 6], on: [1, 1, 1, 1, 1], rule: 'At least three dice the same. Score the total of all five dice.', eq: '20' },
+    fourKind: { dice: [5, 5, 2, 5, 5], on: [1, 1, 1, 1, 1], rule: 'At least four dice the same. Score the total of all five dice.', eq: '22' },
+    fullHouse: { dice: [3, 3, 3, 6, 6], on: [1, 1, 1, 1, 1], rule: 'Three of one number and two of another.', eq: '25', fixed: 25 },
+    smallStraight: { dice: [1, 2, 3, 4, 6], on: [1, 1, 1, 1, 0], rule: 'Four numbers in a row.', eq: '30', fixed: 30 },
+    largeStraight: { dice: [2, 3, 4, 5, 6], on: [1, 1, 1, 1, 1], rule: 'Five numbers in a row.', eq: '40', fixed: 40 },
+    yahtzee: { dice: [6, 6, 6, 6, 6], on: [1, 1, 1, 1, 1], rule: 'All five dice the same.', eq: '50', fixed: 50 },
+    chance: { dice: [1, 3, 4, 5, 6], on: [1, 1, 1, 1, 1], rule: 'Any roll at all. Score the total of all five dice.', eq: '19' },
+    upperBonus: { title: 'Upper Bonus', rule: 'Score 63 or more across Aces through Sixes. That’s three of each number.', fixed: 35, plus: true },
+    yahtzeeBonus: { title: 'Yahtzee Bonus', rule: 'Each extra Yahtzee after scoring 50 in the Yahtzee box. You still fill another box with it (Joker rules).', fixed: 100, plus: true },
+  };
+  let infoOpen = null;
+
+  function closeInfo() {
+    const pop = main.querySelector('.pop');
+    infoOpen = null;
+    if (!pop) return;
+    pop.classList.remove('show');
+    setTimeout(() => pop.remove(), 160);
+  }
+
+  function openInfo(cat, anchor) {
+    const wasOpen = infoOpen === cat;
+    main.querySelectorAll('.label.pressed').forEach((x) => x.classList.remove('pressed'));
+    main.querySelectorAll('.pop').forEach((p) => p.remove());
+    infoOpen = null;
+    if (wasOpen) return;
+    const d = INFO[cat];
+    const title = d.title || S.LABELS[cat];
+    const dice = d.dice
+      ? `<div class="pop-dice">${d.dice.map((v, k) => `<span class="pop-die${d.on[k] ? '' : ' off'}">${dieFace(v)}</span>`).join('')}<span class="pop-eq">= ${d.eq}</span></div>`
+      : '';
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+    pop.setAttribute('role', 'tooltip');
+    pop.innerHTML = `<div class="pop-head"><span class="pop-title">${title}</span>${d.fixed ? `<span class="pop-pts">${d.plus ? '+' : ''}${d.fixed} pts</span>` : ''}</div>
+      ${dice}<p class="pop-rule">${d.rule}</p><i class="pop-arrow"></i>`;
+    main.appendChild(pop);
+
+    // Position in the stage's own (unrotated) coordinates so it works when flipped.
+    const top = anchor.offsetTop;
+    const h = anchor.offsetHeight;
+    const pw = pop.offsetWidth;
+    const ph = pop.offsetHeight;
+    const left = Math.max(8, Math.min(anchor.offsetLeft + 6, main.clientWidth - pw - 8));
+    const below = top + h + ph + 10 <= main.clientHeight;
+    pop.style.left = left + 'px';
+    pop.style.top = (below ? top + h + 6 : top - ph - 6) + 'px';
+    pop.classList.add(below ? 'below' : 'above');
+    const arrowX = Math.min(Math.max(anchor.offsetLeft + 28 - left, 18), pw - 18);
+    pop.style.setProperty('--ax', arrowX + 'px');
+    anchor.classList.add('pressed');
+    pop._anchor = anchor;
+    requestAnimationFrame(() => pop.classList.add('show'));
+    infoOpen = cat;
   }
 
   function renderTray() {
@@ -626,6 +709,7 @@
     const a = el.dataset.action;
     switch (a) {
       case 'close-sheet': closeSheet(); break;
+      case 'info': openInfo(el.dataset.cat, el); break;
       case 'settings': openSettings(); break;
       case 'history': openHistory(sheetState && sheetState.name === 'settings'); break;
       case 'new-game': openNewGame(); break;
@@ -700,6 +784,11 @@
   /* ---------- Events ---------- */
   stage.addEventListener('click', (e) => {
     const el = e.target.closest('[data-action]');
+    if (infoOpen && !(el && el.dataset.action === 'info') && !e.target.closest('.pop')) {
+      main.querySelectorAll('.label.pressed').forEach((x) => x.classList.remove('pressed'));
+      closeInfo();
+      return; // a tap outside only dismisses the popover
+    }
     if (el && stage.contains(el) && !el.disabled) onAction(el, e);
   });
   stage.addEventListener('change', (e) => {
@@ -712,7 +801,9 @@
   stage.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.matches('input[data-np]')) e.target.blur();
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeInfo(); closeSheet(); } });
+  let resizeTimer = null;
+  window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(fitBoard, 80); });
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 
   /* ---------- Boot ---------- */
