@@ -14,7 +14,7 @@
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
   };
 
-  let settings = Object.assign({ theme: 'system', autoRotate: true, dice: false, flip: 0 }, store.get(KEYS.settings, {}));
+  let settings = Object.assign({ theme: 'system', autoRotate: true, dice: false, flip: 0, keepAwake: true, sounds: false, celebrate: true }, store.get(KEYS.settings, {}));
   let game = store.get(KEYS.game, null);
   let undoStack = store.get(KEYS.undo, []);
   let history = store.get(KEYS.history, []);
@@ -46,6 +46,7 @@
     minus: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M7 12h10" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>',
     plus: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M7 12h10M12 7v10" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>',
     trophy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/></svg>',
+    share: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>',
     arrowUp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
   };
 
@@ -118,8 +119,9 @@
 
   /* ---------- Rotation ---------- */
   function targetAngle() {
+    if (!settings.autoRotate) return 0;
     let a = settings.flip || 0;
-    if (game && settings.autoRotate && game.players.length > 1 && !game.finished) a += cur().seat || 0;
+    if (game && game.players.length > 1 && !game.finished) a += cur().seat || 0;
     return ((a % 360) + 360) % 360;
   }
   const norm = (a) => ((a % 360) + 360) % 360;
@@ -131,16 +133,7 @@
 
   async function turnTransition(direction) {
     const target = targetAngle();
-    if (target === norm(angle)) {
-      render();
-      if (!reducedMotion.matches) {
-        main.animate(
-          [{ opacity: 0, transform: `translateX(${direction === -1 ? -24 : 24}px)` }, { opacity: 1, transform: 'none' }],
-          { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' }
-        );
-      }
-      return;
-    }
+    if (target === norm(angle)) { render(); return; }
     const from = angle;
     const to = angle + (direction === -1 ? -180 : 180);
     angle = to;
@@ -150,10 +143,10 @@
     const mid = (from + to) / 2;
     const anim = stage.animate([
       { transform: `rotate(${from}deg) scale(1)`, borderRadius: '0px' },
-      { transform: `rotate(${mid}deg) scale(0.78)`, borderRadius: '44px', offset: 0.5 },
+      { transform: `rotate(${mid}deg) scale(0.86)`, borderRadius: '40px', offset: 0.5 },
       { transform: `rotate(${to}deg) scale(1)`, borderRadius: '0px' },
-    ], { duration: 900, easing: 'cubic-bezier(.65,0,.35,1)' });
-    setTimeout(() => { render(); }, 450);
+    ], { duration: 560, easing: 'cubic-bezier(.6,0,.3,1)' });
+    setTimeout(() => { render(); }, 280);
     try { await anim.finished; } catch (e) { /* cancelled */ }
     stage.classList.remove('spinning');
   }
@@ -169,9 +162,8 @@
 
   /* ---------- Rendering ---------- */
   function render() {
-    if (!game) { renderEmpty(); return; }
-    renderNav();
-    renderMain();
+    if (!game) { renderEmpty(); } else { renderNav(); renderMain(); }
+    syncWakeLock();
   }
 
   function renderEmpty() {
@@ -201,7 +193,7 @@
       <div class="nav-actions">
         ${game.finished ? `<button class="icon-btn" data-action="results" aria-label="Results">${ICON.trophy}</button>` : ''}
         <button class="icon-btn" data-action="undo" aria-label="Undo" ${undoStack.length ? '' : 'disabled'}>${ICON.undo}</button>
-        <button class="icon-btn" data-action="flip" aria-label="Flip card">${ICON.flip}</button>
+        ${settings.autoRotate ? `<button class="icon-btn" data-action="flip" aria-label="Flip card">${ICON.flip}</button>` : ''}
         <button class="icon-btn" data-action="settings" aria-label="Menu">${ICON.more}</button>
       </div>
     </div>`;
@@ -233,9 +225,10 @@
         let act = false;
         if (v !== null) {
           inner = String(v);
+          cls.push('filled');
           if (v === 0) cls.push('zero');
           if (justScored === cat && isCur(i)) cls.push('flash');
-        } else if (isCur(i) && !busy) {
+        } else if (isCur(i)) {
           if (diceLive) {
             if (allowed.includes(cat)) {
               const s = S.scoreFor(cat, turn.dice, p.scores);
@@ -246,7 +239,7 @@
         }
         r += act
           ? `<button class="${cls.join(' ')}"${colStyle(i)} data-action="score" data-cat="${cat}" aria-label="Score ${S.LABELS[cat]}">${inner}</button>`
-          : `<div class="${cls.join(' ')}"${colStyle(i)}>${inner}</div>`;
+          : `<div class="${cls.join(' ')}"${colStyle(i)}${v !== null ? ` data-p="${i}" data-cat="${cat}"` : ''}>${inner}</div>`;
       });
       return r;
     };
@@ -266,7 +259,7 @@
     h += players.map((p, i) => {
       const t = totals[i];
       const txt = p.bonusCount ? `+${t.yahtzeeBonus}` : '';
-      if (isCur(i) && !busy) return `<button class="c val sum${curCls(i)} bonus" data-action="bonus"${colStyle(i)} aria-label="Yahtzee bonus">${txt || '<span class="plus">+</span>'}</button>`;
+      if (isCur(i)) return `<button class="c val sum${curCls(i)} bonus" data-action="bonus"${colStyle(i)} aria-label="Yahtzee bonus">${txt || '<span class="plus">+</span>'}</button>`;
       return `<div class="c val sum${curCls(i)}"${colStyle(i)}>${txt}</div>`;
     }).join('');
 
@@ -371,7 +364,7 @@
     const left = 3 - turn.rolls;
     return `<div class="tray" id="tray">
       <div class="dice">${dice}</div>
-      <button class="roll-btn" data-action="roll" ${left <= 0 || busy ? 'disabled' : ''}>
+      <button class="roll-btn" data-action="roll" ${left <= 0 ? 'disabled' : ''}>
         <span>Roll</span><span class="roll-pips" aria-label="${left} rolls left">${[0, 1, 2].map((k) => `<i class="${k < turn.rolls ? 'used' : ''}"></i>`).join('')}</span>
       </button>
     </div>`;
@@ -429,7 +422,7 @@
   })();
 
   /* Manual score picker */
-  function openPicker(cat) {
+  function openPicker(cat, edit) {
     const opts = S.manualOptions(cat);
     const ui = S.UPPER.indexOf(cat);
     let body = `<p class="sheet-lede">${S.HINTS[cat]}</p>`;
@@ -446,11 +439,39 @@
         `<button class="value-btn" data-action="pick" data-v="${v}">${v}</button>`).join('')}
         ${opts.includes(0) ? '<button class="value-btn scratch" data-action="pick" data-v="0">Scratch (0)</button>' : ''}</div>`;
     }
+    if (edit) {
+      body = body.replace(new RegExp(`data-v="${edit.current}"`), `data-v="${edit.current}" aria-current="true"`);
+      body = `<p class="sheet-lede edit-note">Changing ${esc(game.players[edit.pi].name)}'s score from <b>${edit.current}</b></p>` + body;
+    }
     openSheet({
-      title: S.LABELS[cat], compact: false,
+      title: edit ? `Edit ${S.LABELS[cat]}` : S.LABELS[cat], compact: false,
       left: '<button class="text-btn" data-action="close-sheet">Cancel</button>', right: '',
-      body, cat,
+      body, cat, edit,
     });
+  }
+
+  function openEdit(pi, cat) {
+    if (busy || !game) return;
+    const p = game.players[pi];
+    if (!p || p.scores[cat] === null) return;
+    openPicker(cat, { pi, current: p.scores[cat] });
+  }
+
+  function applyEdit(pi, cat, v) {
+    const p = game.players[pi];
+    closeSheet();
+    if (p.scores[cat] === v) return;
+    pushUndo();
+    const before = S.totals(p).upperBonus;
+    p.scores[cat] = v;
+    if (game.finished) {
+      const rec = history.find((g) => g.id === game.id);
+      if (rec) rec.players = game.players.map((x) => ({ name: x.name, total: S.totals(x).grandTotal, color: x.color }));
+    }
+    save();
+    render();
+    toast(`${esc(p.name)}'s ${S.LABELS[cat]} changed to ${v}`);
+    if (!before && S.totals(p).upperBonus) celebrate('small');
   }
 
   /* Yahtzee bonus stepper */
@@ -519,12 +540,16 @@
       <div class="group">
         ${sw('autoRotate', 'Auto-Rotate Card', 'Flip 180° to face the next player')}
         ${sw('dice', 'Dice Roller', 'Roll and hold dice in the app')}
+        ${sw('keepAwake', 'Keep Screen On', 'Stop the screen dimming during a game')}
+        ${sw('celebrate', 'Celebrations', 'Confetti for Yahtzees, bonuses and wins')}
+        ${sw('sounds', 'Sounds', 'Dice rolls and scoring chimes')}
       </div>
       <div class="section-header"><span>Game</span></div>
       <div class="group">
         <button class="row" data-action="new-game"><span class="row-body" style="color:var(--accent)">New Game…</span></button>
         <button class="row" data-action="history"><span class="row-body">Scores &amp; History</span><span class="row-value empty">${history.length || ''}</span>${ICON.chev}</button>
       </div>
+      <p class="section-footer">Tap a category name to see how it scores. Press and hold any score to change it.</p>
       <p class="section-footer">Standard rules: 35-point bonus at 63 in the upper section, +100 for each extra Yahtzee, and forced Joker rules when using the dice roller.</p>`;
   }
   function openSettings() { openSheet({ title: 'Settings', body: settingsBody(), name: 'settings' }); }
@@ -581,7 +606,8 @@
         <span class="row-value">${r.total}</span>${ICON.chev}</button>`; }).join('')}</div>`}
       <div class="actions">
         <button class="btn block" data-action="rematch">Play Again</button>
-        <button class="btn tinted block" data-action="new-game">New Players</button>
+        <button class="btn tinted block" data-action="share">${ICON.share} Share Results</button>
+        <button class="text-btn" data-action="new-game">New Players</button>
       </div>`;
     openSheet({ title: 'Game Over', body });
   }
@@ -590,6 +616,73 @@
     history.forEach((g) => { if (g.id !== game.id) g.players.forEach((p) => { best = Math.max(best, p.total); }); });
     return total > best;
   }
+
+  /* ---------- Effects ---------- */
+  function sfx(name) { if (settings.sounds && window.FX) window.FX.sound(name); }
+  function celebrate(kind) {
+    if (kind === 'win') sfx('win'); else sfx(kind === 'big' ? 'bonus' : 'score');
+    if (!settings.celebrate || !window.FX) return;
+    if (kind === 'big') window.FX.confetti(stage, { count: 160 });
+    else if (kind === 'small') window.FX.confetti(stage, { count: 60, duration: 1700 });
+    else window.FX.confetti(stage, { count: 220, y: 0.3, duration: 2800 });
+  }
+  async function shareResults() {
+    if (!game || !window.FX) return;
+    const players = game.players.map((p) => ({ name: p.name, total: S.totals(p).grandTotal, color: p.color }));
+    const date = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const r = await window.FX.shareResults(players, date);
+    if (r === 'downloaded') toast('Results image saved');
+    else if (r === 'failed') toast('Couldn’t create image');
+  }
+
+  /* Keep the screen on while a game is in progress. */
+  let wakeLock = null;
+  let wakePending = false;
+  async function syncWakeLock() {
+    const want = !!(settings.keepAwake && game && !game.finished && document.visibilityState === 'visible');
+    if (wakePending) return;
+    try {
+      if (want && !wakeLock && navigator.wakeLock) {
+        wakePending = true;
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      } else if (!want && wakeLock) {
+        const w = wakeLock;
+        wakeLock = null;
+        await w.release();
+      }
+    } catch (e) { /* not supported or not allowed right now */ }
+    wakePending = false;
+  }
+  document.addEventListener('visibilitychange', syncWakeLock);
+
+  /* Press and hold a filled score to edit it. */
+  let pressTimer = null;
+  let pressFired = false;
+  let pressAt = null;
+  function cancelPress() {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+    main.querySelectorAll('.holding').forEach((x) => x.classList.remove('holding'));
+  }
+  main.addEventListener('pointerdown', (e) => {
+    const cell = e.target.closest('.c.filled');
+    pressFired = false;
+    if (!cell || busy) return;
+    pressAt = [e.clientX, e.clientY];
+    cell.classList.add('holding');
+    pressTimer = setTimeout(() => {
+      pressFired = true;
+      cancelPress();
+      haptic(15);
+      openEdit(+cell.dataset.p, cell.dataset.cat);
+    }, 480);
+  });
+  main.addEventListener('pointermove', (e) => {
+    if (pressTimer && pressAt && Math.hypot(e.clientX - pressAt[0], e.clientY - pressAt[1]) > 10) cancelPress();
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => main.addEventListener(t, cancelPress));
+  main.addEventListener('contextmenu', (e) => { if (e.target.closest('.c.filled')) e.preventDefault(); });
 
   /* ---------- Actions ---------- */
   async function commitScore(cat, value) {
@@ -604,13 +697,18 @@
       p.bonusCount = (p.bonusCount || 0) + 1;
       bonus = true;
     }
+    const hadUpperBonus = S.totals(p).upperBonus > 0;
     p.scores[cat] = value;
     justScored = cat;
     save();
     render();
     haptic(12);
-    if (bonus) toast('🎉 Yahtzee Bonus +100', 1400);
-    await wait(bonus ? 900 : 560);
+    const yahtzee = bonus || (cat === 'yahtzee' && value === 50);
+    const upper = !hadUpperBonus && S.totals(p).upperBonus > 0;
+    if (yahtzee) { toast(bonus ? '🎉 Yahtzee Bonus +100' : '🎉 Yahtzee! +50', 1500); celebrate('big'); }
+    else if (upper) { toast('⭐️ Upper bonus +35', 1500); celebrate('small'); }
+    else sfx('score');
+    await wait(yahtzee || upper ? 750 : 320);
     justScored = null;
 
     if (game.players.every(isDone)) {
@@ -636,7 +734,7 @@
     });
     history = history.slice(0, 200);
     save();
-    turnTransition(1).then(() => openResults());
+    turnTransition(1).then(() => { openResults(); celebrate('win'); });
   }
 
   async function undo() {
@@ -670,6 +768,7 @@
     save();
     render();
     haptic(15);
+    sfx('roll');
     if (S.isYahtzee(turn.dice)) toast(S.earnsYahtzeeBonus(turn.dice, cur().scores) ? '🎲 Yahtzee! +100 bonus' : '🎲 Yahtzee!', 1800);
     if (reducedMotion.matches) return;
     const els = main.querySelectorAll('.die');
@@ -721,12 +820,17 @@
         const i = +el.dataset.i;
         game.turn.held[i] = !game.turn.held[i];
         haptic(5);
+        sfx('hold');
         save();
         el.classList.toggle('held', game.turn.held[i]);
         break;
       }
       case 'score': if (!busy) onScoreTap(el.dataset.cat); break;
-      case 'pick': if (sheetState && sheetState.cat) commitScore(sheetState.cat, +el.dataset.v); break;
+      case 'pick':
+        if (sheetState && sheetState.edit) applyEdit(sheetState.edit.pi, sheetState.cat, +el.dataset.v);
+        else if (sheetState && sheetState.cat) commitScore(sheetState.cat, +el.dataset.v);
+        break;
+      case 'share': shareResults(); break;
       case 'bonus': if (!busy && game && !game.finished) openBonus(); break;
       case 'bonus-step': if (sheetState && sheetState.step) sheetState.step(+el.dataset.d); break;
       case 'bonus-save': if (sheetState && sheetState.saveBonus) sheetState.saveBonus(); break;
@@ -783,6 +887,8 @@
 
   /* ---------- Events ---------- */
   stage.addEventListener('click', (e) => {
+    if (pressFired) { pressFired = false; e.preventDefault(); return; }
+    if (!wakeLock) syncWakeLock();
     const el = e.target.closest('[data-action]');
     if (infoOpen && !(el && el.dataset.action === 'info') && !e.target.closest('.pop')) {
       main.querySelectorAll('.label.pressed').forEach((x) => x.classList.remove('pressed'));
@@ -796,7 +902,13 @@
     if (!key) return;
     settings[key] = e.target.checked;
     save();
-    if (key === 'autoRotate' && game) { busy = true; turnTransition(1).then(() => { busy = false; render(); }); } else render();
+    if (key === 'autoRotate') {
+      if (!settings.autoRotate) settings.flip = 0;
+      save();
+      if (game) { busy = true; turnTransition(-1).then(() => { busy = false; render(); }); }
+    } else if (key === 'keepAwake') { syncWakeLock(); render(); }
+    else if (key === 'sounds' && settings.sounds) { sfx('score'); render(); }
+    else render();
   });
   stage.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.matches('input[data-np]')) e.target.blur();
