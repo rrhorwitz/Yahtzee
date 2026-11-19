@@ -98,10 +98,10 @@
   }
   let unlocked = false;
   // touchend / click are the gestures iOS accepts for starting audio (pointerdown is not)
-  const arm = () => { if (unlocked) return; unlocked = true; unlock(); };
+  const arm = () => { unlockPool(); if (unlocked) return; unlocked = true; };
   ['touchend', 'click', 'keydown'].forEach((t) => document.addEventListener(t, arm, { capture: true, passive: true }));
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') unlocked = false; // re-unlock on the next tap
+    if (document.visibilityState === 'visible') { unlocked = false; poolUnlocked = false; } // re-unlock on the next tap
   });
   /* Silent switch: 'ambient' respects it (default); 'playback' plays anyway (iOS 17+). */
   function setIgnoreSilent(on) {
@@ -232,71 +232,52 @@
     bonus(a, t) { [523, 659, 784, 1047].forEach((f, i) => tone(a, t + i * 0.08, f, 0.22, 0.12, 'triangle')); },
     win(a, t) { [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(a, t + i * 0.09, f, 0.35, 0.11, 'triangle')); },
   };
-  /* ---- Clip playback (iOS home-screen apps) ----
-     Live Web Audio is unreliable in iOS standalone mode, so each sound is pre-rendered
-     once with an OfflineAudioContext into a WAV and played through <audio> elements. */
-  const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  let playMode = standalone ? 'clips' : 'live';
-  const CLIPS = [['roll', 5, 3], ['roll', 4, 2], ['roll', 3, 2], ['roll', 2, 2], ['roll', 1, 2], ['hold', 0, 1], ['score', 0, 1], ['upper', 0, 1], ['bonus', 0, 1], ['win', 0, 1]];
-  const clipUrls = {};
-  let clipsReady = null;
-  function wav(buf) {
-    const ch = buf.getChannelData(0);
-    const n = ch.length;
-    const dv = new DataView(new ArrayBuffer(44 + n * 2));
-    const w = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
-    w(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
-    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
-    dv.setUint32(24, buf.sampleRate, true); dv.setUint32(28, buf.sampleRate * 2, true);
-    dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, 'data'); dv.setUint32(40, n * 2, true);
-    for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, ch[i])) * 0x7fff, true);
-    return URL.createObjectURL(new Blob([dv.buffer], { type: 'audio/wav' }));
-  }
-  function prepareClips() {
-    if (clipsReady) return clipsReady;
-    const O = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-    if (!O) { clipsReady = Promise.resolve(false); return clipsReady; }
-    clipsReady = (async () => {
-      for (const [name, arg, variants] of CLIPS) {
-        for (let v = 0; v < variants; v++) {
-          const secs = name === 'win' ? 1.4 : name === 'upper' ? 1.2 : name === 'roll' ? 0.9 : 0.6;
-          const ctx = new O(1, Math.ceil(44100 * secs), 44100);
-          SOUNDS[name](ctx, 0.01, arg || undefined);
-          const buf = await ctx.startRendering();
-          const key = name === 'roll' ? `roll${arg}` : name;
-          (clipUrls[key] = clipUrls[key] || []).push(wav(buf));
-        }
-      }
-      return true;
-    })().catch(() => false);
-    return clipsReady;
-  }
+  /* ---- Sound playback: bundled audio files (sounds/*.m4a) ----
+     The SOUNDS synthesizers above are only used to render those files (npm run build:sounds).
+     Plain <audio> playback is what iOS Safari and home-screen apps handle most reliably. */
+  const VARIANTS = { roll1: 3, roll2: 3, roll3: 3, roll4: 3, roll5: 3 };
   const pool = [];
-  function playClip(name, arg) {
-    const key = name === 'roll' ? `roll${Math.max(1, Math.min(5, arg || 5))}` : name;
-    const list = clipUrls[key];
-    if (!list) { prepareClips(); return false; }
-    let el = pool.find((x) => x.paused || x.ended);
-    if (!el) { el = new Audio(); el.preload = 'auto'; pool.push(el); }
-    el.src = list[Math.floor(Math.random() * list.length)];
-    const pr = el.play();
-    if (pr && pr.catch) pr.catch(() => {});
-    return true;
+  for (let k = 0; k < 6; k++) { const el = new Audio(); el.preload = 'auto'; pool.push(el); }
+  let poolUnlocked = false;
+  let lastError = '';
+  // iOS lets an <audio> element play later (outside a tap) only once it has played inside one.
+  function unlockPool() {
+    if (poolUnlocked) return;
+    poolUnlocked = true;
+    pool.forEach((el) => {
+      el.src = 'sounds/silent.m4a';
+      const pr = el.play();
+      if (pr && pr.then) pr.then(() => el.pause()).catch((e) => { poolUnlocked = false; lastError = e && e.name; });
+    });
   }
-  if (standalone) prepareClips();
-
+  function fileFor(name, arg) {
+    if (name === 'roll') {
+      const key = `roll${Math.max(1, Math.min(5, arg || 5))}`;
+      return `sounds/${key}-${Math.floor(Math.random() * VARIANTS[key])}.m4a`;
+    }
+    return `sounds/${name}.m4a`;
+  }
   function sound(name, arg) {
-    if (!SOUNDS[name]) return;
+    if (!SOUNDS[name]) return Promise.resolve(false);
+    const el = pool.find((x) => x.paused || x.ended) || pool[0];
     try {
-      if (playMode === 'clips' && playClip(name, arg)) return;
-      const a = audio();
-      if (a) SOUNDS[name](a, a.currentTime + 0.01, arg);
-    } catch (e) { /* audio unavailable */ }
+      el.pause();
+      el.src = fileFor(name, arg);
+      el.currentTime = 0;
+      const pr = el.play();
+      if (pr && pr.then) return pr.then(() => { lastError = ''; return true; }).catch((e) => { lastError = `${e.name}: ${e.message}`; return false; });
+      return Promise.resolve(true);
+    } catch (e) {
+      lastError = `${e.name}: ${e.message}`;
+      return Promise.resolve(false);
+    }
   }
   function audioStatus() {
-    return { mode: playMode, standalone, context: ac ? ac.state : 'none', clips: Object.keys(clipUrls).length };
+    const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+    return { standalone, unlocked: poolUnlocked, error: lastError };
   }
-  function setMode(m) { playMode = m; if (m === 'clips') prepareClips(); }
+  function prepareClips() { /* files are bundled; nothing to prepare */ }
+  function setMode() {}
 
   /* ---------- Shareable results image ---------- */
   function rr(ctx, x, y, w, h, r) {

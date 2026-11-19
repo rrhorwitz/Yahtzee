@@ -3,7 +3,7 @@
   'use strict';
 
   const S = window.Scoring;
-  const APP_VERSION = '40';
+  const APP_VERSION = '41';
   const COLORS = ['#007AFF', '#FF9500', '#34C759', '#FF2D55', '#AF52DE', '#5AC8FA', '#5856D6', '#FFCC00'];
   const KEYS = { settings: 'yahtzee.settings', game: 'yahtzee.game', undo: 'yahtzee.undo', history: 'yahtzee.history', last: 'yahtzee.lastPlayers' };
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -1515,15 +1515,14 @@
       case 'yb-no': if (sheetState && sheetState.pending) { const { cat, v } = sheetState.pending; commitScore(cat, v); } break;
       case 'share': shareResults(); break;
       case 'test-sound': {
-        if (window.FX) {
-          window.FX.unlock();
-          window.FX.sound('upper');
-          setTimeout(() => {
-            const st = window.FX.audioStatus();
-            const s = sheet.querySelector('#sound-status');
-            if (s) s.textContent = `Playing via ${st.mode === 'clips' ? 'audio clips' : 'Web Audio'}${st.standalone ? ' · home-screen app' : ''} · engine ${st.context} · ${st.clips} clips ready`;
-          }, 250);
-        }
+        const s = sheet.querySelector('#sound-status');
+        const say = (t) => { if (s) s.textContent = t; };
+        if (!window.FX) { say('Sound engine didn’t load — fully close and reopen the app'); break; }
+        say('Playing…');
+        window.FX.sound('upper').then((ok) => {
+          const st = window.FX.audioStatus();
+          say(ok ? `✓ Played${st.standalone ? ' (home-screen app)' : ''}. If you heard nothing, check the volume and silent switch.` : `✗ Couldn’t play: ${st.error || 'blocked by iOS'}`);
+        });
         break;
       }
       case 'gc-show': NATIVE.gameCenter.show().catch((err) => toast(esc(err.message || 'Game Center unavailable'))); break;
