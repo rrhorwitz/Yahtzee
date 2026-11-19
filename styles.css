@@ -537,22 +537,19 @@ body { -webkit-touch-callout: none; }
   padding-right: max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
 }
 
-/* Phone landscape: dice tray becomes a column beside the board. */
+/* Phones are portrait-only: in landscape, ask to turn the phone upright. */
+.rotate-hint { display: none; }
 @media (orientation: landscape) and (max-height: 540px) {
-  .screen { padding-top: 6px; padding-bottom: 6px; }
-  .nav { padding: 0 12px 4px; }
-  .nav-bar { min-height: 38px; }
-  .nav-name { font-size: 18px; line-height: 22px; }
-  .nav-sub { display: none; }
-  .main { flex-direction: row; gap: 8px; padding-bottom: 0; }
-  .tray { flex-direction: column; width: 70px; padding: 8px; gap: 8px; }
-  .dice { flex-direction: column; flex: 1; justify-content: space-evenly; align-items: center; gap: 4px; }
-  .die { flex: none; width: min(44px, calc((100vh - 150px) / 5.4)); max-width: none; }
-  .roll-btn { width: 100%; min-height: 44px; align-self: auto; }
-  .board { grid-template-columns: minmax(130px, 210px) repeat(var(--cols), minmax(0, 1fr)); font-size: clamp(10px, min(3.4cqh, 3cqw), 16px); }
-  .c.head { flex-direction: row; gap: 6px; padding: 4px 2px; }
-  .c.head .avatar { width: 1.5em; height: 1.5em; }
+  .rotate-hint {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: var(--bg); color: var(--label-2); font-size: 17px; text-align: center;
+  }
+  .rotate-hint svg { width: 64px; height: 64px; color: var(--label); animation: tiltback 2.4s ease-in-out infinite; }
+  .rotate-hint b { color: var(--label); font-size: 20px; }
+  #stage { visibility: hidden; }
 }
+@keyframes tiltback { 0%, 20% { transform: rotate(-90deg); } 55%, 100% { transform: rotate(0deg); } }
 
 /* iPad and large screens: use the space. */
 @media (min-width: 700px) and (min-height: 700px) {
